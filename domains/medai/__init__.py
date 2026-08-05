@@ -1,0 +1,1 @@
+"""MedAI domain package"""

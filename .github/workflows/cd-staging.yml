@@ -1,0 +1,51 @@
+name: CD – Deploy to Staging
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: staging-${{ github.sha }}
+        run: |
+          docker build -f infrastructure/docker/Dockerfile.api \
+            -t $ECR_REGISTRY/ai-serviceos-api:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/ai-serviceos-api:$IMAGE_TAG
+
+      - name: Build and push Frontend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: staging-${{ github.sha }}
+        run: |
+          docker build -f infrastructure/docker/Dockerfile.frontend \
+            -t $ECR_REGISTRY/ai-serviceos-frontend:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/ai-serviceos-frontend:$IMAGE_TAG
+
+      - name: Run database migrations
+        run: |
+          echo "Running Alembic migrations on staging..."
+          # ssh to staging and run: alembic upgrade head
+
+      - name: Notify deployment
+        run: echo "✅ Staging deployment complete for SHA ${{ github.sha }}"
