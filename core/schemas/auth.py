@@ -2,6 +2,8 @@
 Auth-related Pydantic schemas.
 """
 
+import uuid
+
 from pydantic import EmailStr, Field
 
 from core.schemas.base import BaseSchema
@@ -31,7 +33,6 @@ class RefreshTokenRequest(BaseSchema):
 
 class UserOut(BaseSchema):
     """Safe user representation (no password)."""
-    import uuid
     id: uuid.UUID
     email: str
     full_name: str

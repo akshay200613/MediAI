@@ -23,6 +23,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from core.config.settings import settings
+print("=" * 80)
+print("DATABASE_URL:", repr(settings.database_url))
+print("=" * 80)
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 
