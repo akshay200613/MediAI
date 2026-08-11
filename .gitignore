@@ -96,3 +96,6 @@ qdrant_storage/
 # === Uploads & Media ===
 uploads/
 media/
+
+# RAG generated indexes
+data/indexes/

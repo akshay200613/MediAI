@@ -1,5 +1,5 @@
 """
-Embedder – generates vector embeddings using Gemini text-embedding-004.
+Embedder – generates vector embeddings using Gemini.
 """
 
 from core.config.logging import get_logger
@@ -17,7 +17,10 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
 
     embeddings = []
     for text in texts:
-        embedding = await client.embed(text)
+        embedding = await client.embed(
+            text,
+            task_type="RETRIEVAL_DOCUMENT",
+        )
         embeddings.append(embedding)
 
     logger.debug("Embeddings generated", count=len(texts))

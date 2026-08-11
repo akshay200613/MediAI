@@ -9,11 +9,11 @@
     --bg-primary: #0a0f1e;
     --bg-secondary: #0d1526;
     --bg-card: rgba(17, 24, 39, 0.8);
-    --border-color: rgba(59, 130, 246, 0.15);
+    --border-color: rgba(20, 184, 166, 0.15);
     --text-primary: #f1f5f9;
     --text-secondary: #94a3b8;
-    --accent-blue: #3b82f6;
-    --accent-teal: #06b6d4;
+    --accent-teal: #14b8a6;
+    --accent-cyan: #06b6d4;
   }
 
   * {
@@ -24,8 +24,8 @@
   body {
     @apply bg-surface-900 text-slate-100 font-sans antialiased;
     background-image:
-      radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 20%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
+      radial-gradient(ellipse at 20% 50%, rgba(20, 184, 166, 0.04) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(6, 182, 212, 0.04) 0%, transparent 50%);
     min-height: 100vh;
   }
 
@@ -37,40 +37,71 @@
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: #0d1526; }
   ::-webkit-scrollbar-thumb { background: #2a3a50; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+  ::-webkit-scrollbar-thumb:hover { background: #14b8a6; }
+
+  /* Tabular numerals for stat displays */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 @layer components {
-  /* Glass card */
+  /* ── Glass card ─────────────────────────────────── */
   .glass-card {
     @apply bg-surface-700/80 backdrop-blur-sm border border-white/5 rounded-2xl shadow-glass;
   }
 
-  /* Glass sidebar */
+  /* ── Glass sidebar ──────────────────────────────── */
   .glass-sidebar {
     @apply bg-surface-800/90 backdrop-blur-md border-r border-white/5;
   }
 
-  /* Input field */
+  /* ── Input field (dark mode) ────────────────────── */
   .input-field {
     @apply w-full bg-surface-600/60 border border-white/10 rounded-xl px-4 py-3
            text-slate-100 placeholder-slate-500 text-sm
-           focus:outline-none focus:border-primary-500/60 focus:ring-1 focus:ring-primary-500/30
+           focus:outline-none focus:border-primary-500/60 focus:ring-2 focus:ring-primary-500/30
            transition-all duration-200;
   }
 
-  /* Primary button */
-  .btn-primary {
-    @apply flex items-center justify-center gap-2
-           bg-gradient-to-r from-primary-600 to-primary-500
-           hover:from-primary-500 hover:to-primary-400
-           text-white font-semibold px-6 py-3 rounded-xl
-           transition-all duration-200 shadow-glow
-           hover:shadow-glow hover:scale-[1.02]
-           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
+  /* ── Input field (ivory / light mode for auth) ──── */
+  .input-ivory {
+    @apply w-full bg-white border border-ivory-300 rounded-xl px-4 py-3
+           text-slate-800 placeholder-slate-400 text-sm
+           focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20
+           transition-all duration-200;
   }
 
-  /* Secondary button */
+  /* ── Teal Gradient CTA Button ───────────────────── */
+  .btn-teal-gradient {
+    @apply flex items-center justify-center gap-2
+           text-white font-semibold px-6 rounded-xl
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
+    height: 48px;
+    background: linear-gradient(135deg, #0d9488 0%, #14b8a6 50%, #2dd4bf 100%);
+    box-shadow: 0 0 20px rgba(20, 184, 166, 0.25);
+  }
+  .btn-teal-gradient:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #14b8a6 100%);
+    box-shadow: 0 0 30px rgba(20, 184, 166, 0.4);
+  }
+
+  /* ── Primary button (teal-based) ────────────────── */
+  .btn-primary {
+    @apply flex items-center justify-center gap-2
+           text-white font-semibold px-6 py-3 rounded-xl
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
+    background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+    box-shadow: 0 0 20px rgba(20, 184, 166, 0.25);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
+    box-shadow: 0 0 30px rgba(20, 184, 166, 0.4);
+  }
+
+  /* ── Secondary button ───────────────────────────── */
   .btn-secondary {
     @apply flex items-center justify-center gap-2
            bg-surface-600/60 hover:bg-surface-500/60
@@ -79,7 +110,23 @@
            transition-all duration-200;
   }
 
-  /* Danger button */
+  /* ── Outlined button (Google auth, etc.) ─────────── */
+  .btn-outlined {
+    @apply flex items-center justify-center gap-3
+           bg-transparent border border-slate-300 hover:border-primary-400
+           text-slate-600 hover:text-primary-700 font-medium px-6 rounded-xl
+           transition-all duration-200;
+    height: 48px;
+  }
+  .btn-outlined-dark {
+    @apply flex items-center justify-center gap-3
+           bg-transparent border border-white/15 hover:border-primary-400/50
+           text-slate-300 hover:text-white font-medium px-6 rounded-xl
+           transition-all duration-200;
+    height: 48px;
+  }
+
+  /* ── Danger button ──────────────────────────────── */
   .btn-danger {
     @apply flex items-center justify-center gap-2
            bg-red-500/20 hover:bg-red-500/30
@@ -88,23 +135,31 @@
            transition-all duration-200;
   }
 
-  /* Badge */
+  /* ── Pill button ────────────────────────────────── */
+  .btn-pill {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium
+           bg-surface-600/60 border border-white/10
+           text-slate-300 hover:text-white hover:border-primary-500/30
+           hover:bg-primary-500/10
+           transition-all duration-200;
+  }
+
+  /* ── Badge ──────────────────────────────────────── */
   .badge {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
-
   .badge-blue   { @apply badge bg-primary-500/20 text-primary-300 border border-primary-500/30; }
   .badge-green  { @apply badge bg-emerald-500/20 text-emerald-300 border border-emerald-500/30; }
   .badge-yellow { @apply badge bg-amber-500/20 text-amber-300 border border-amber-500/30; }
   .badge-red    { @apply badge bg-red-500/20 text-red-300 border border-red-500/30; }
   .badge-gray   { @apply badge bg-slate-500/20 text-slate-300 border border-slate-500/30; }
 
-  /* Stat card */
+  /* ── Stat card ──────────────────────────────────── */
   .stat-card {
     @apply glass-card p-6 flex items-center gap-4 hover:border-white/10 transition-all duration-300;
   }
 
-  /* Table */
+  /* ── Table ──────────────────────────────────────── */
   .data-table { @apply w-full text-sm; }
   .data-table thead tr { @apply border-b border-white/5; }
   .data-table thead th { @apply text-left text-slate-400 font-medium pb-3 px-4; }
@@ -113,37 +168,145 @@
   }
   .data-table tbody td { @apply py-4 px-4 text-slate-300; }
 
-  /* Sidebar nav item */
+  /* ── Sidebar nav item ───────────────────────────── */
   .nav-item {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
            text-slate-400 hover:text-white hover:bg-white/5
-           transition-all duration-200 cursor-pointer;
+           transition-all duration-200 cursor-pointer
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-800;
   }
   .nav-item.active {
-    @apply bg-primary-500/15 text-primary-400 border border-primary-500/20;
+    @apply bg-primary-500/15 text-primary-400;
+    box-shadow: inset 3px 0 0 0 #14b8a6;
   }
 
-  /* Section header */
+  /* ── Page header ────────────────────────────────── */
   .page-header {
     @apply flex items-center justify-between mb-8;
   }
 
-  /* Form label */
+  /* ── Form label ─────────────────────────────────── */
   .form-label {
     @apply block text-sm font-medium text-slate-300 mb-1.5;
   }
+  .form-label-light {
+    @apply block text-sm font-medium text-slate-600 mb-1.5;
+  }
 
-  /* Chat bubble */
+  /* ── Chat bubbles ───────────────────────────────── */
   .chat-bubble-user {
-    @apply bg-primary-600/30 border border-primary-500/20 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] ml-auto;
+    @apply rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] ml-auto;
+    background: rgba(20, 184, 166, 0.12);
+    border: 1px solid rgba(20, 184, 166, 0.2);
   }
   .chat-bubble-ai {
-    @apply bg-surface-600/60 border border-white/5 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%];
+    @apply max-w-[85%] py-2;
+    /* No bubble — bare text with Medai mark */
   }
 
-  /* Shimmer loader */
+  /* ── Typing cursor ──────────────────────────────── */
+  .typing-cursor::after {
+    content: '|';
+    @apply text-primary-400 animate-typing-cursor ml-0.5 font-light;
+  }
+
+  /* ── Typing indicator (bounce dots) ─────────────── */
+  .bounce-dots {
+    @apply flex items-center gap-1;
+  }
+  .bounce-dots span {
+    @apply w-2 h-2 rounded-full bg-slate-400;
+    animation: bounceDot 1.4s ease-in-out infinite;
+  }
+  .bounce-dots span:nth-child(1) { animation-delay: 0ms; }
+  .bounce-dots span:nth-child(2) { animation-delay: 150ms; }
+  .bounce-dots span:nth-child(3) { animation-delay: 300ms; }
+
+  /* ── Shimmer skeleton ───────────────────────────── */
   .shimmer {
-    @apply animate-pulse bg-surface-600/40 rounded-lg;
+    @apply rounded-lg;
+    background: linear-gradient(
+      90deg,
+      rgba(26, 35, 50, 0.4) 25%,
+      rgba(42, 58, 80, 0.6) 50%,
+      rgba(26, 35, 50, 0.4) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* ── Gradient mesh background (auth branded panel) ── */
+  .gradient-mesh {
+    @apply relative overflow-hidden;
+    background: linear-gradient(135deg, #0f766e 0%, #0d1526 40%, #115e59 100%);
+  }
+  .gradient-mesh .mesh-blob {
+    @apply absolute rounded-full;
+    mix-blend-mode: soft-light;
+    filter: blur(60px);
+  }
+
+  /* ── Callout cards ──────────────────────────────── */
+  .callout-amber {
+    @apply flex items-start gap-3 px-4 py-3 rounded-xl border-l-4;
+    background: rgba(245, 158, 11, 0.08);
+    border-left-color: #f59e0b;
+    border-top: 1px solid rgba(245, 158, 11, 0.15);
+    border-right: 1px solid rgba(245, 158, 11, 0.15);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+  }
+  .callout-red {
+    @apply flex items-start gap-3 px-4 py-3 rounded-xl border-l-4;
+    background: rgba(239, 68, 68, 0.08);
+    border-left-color: #ef4444;
+    border-top: 1px solid rgba(239, 68, 68, 0.15);
+    border-right: 1px solid rgba(239, 68, 68, 0.15);
+    border-bottom: 1px solid rgba(239, 68, 68, 0.15);
+  }
+
+  /* ── Password strength bar ──────────────────────── */
+  .strength-bar {
+    @apply flex gap-1 mt-2;
+  }
+  .strength-bar-segment {
+    @apply h-1 flex-1 rounded-full transition-all duration-300;
+    background: rgba(148, 163, 184, 0.2);
+  }
+  .strength-bar-segment.active-weak { @apply bg-red-400/60; }
+  .strength-bar-segment.active-fair { @apply bg-amber-400/60; }
+  .strength-bar-segment.active-good { @apply bg-primary-400/60; }
+  .strength-bar-segment.active-strong { @apply bg-emerald-400/60; }
+
+  /* ── Gradient border (rotating conic) ───────────── */
+  .gradient-border-card {
+    @apply relative rounded-2xl p-[1px] overflow-hidden;
+  }
+  .gradient-border-card::before {
+    content: '';
+    @apply absolute inset-0 rounded-2xl animate-gradient-rotate;
+    background: conic-gradient(
+      from 0deg,
+      rgba(20, 184, 166, 0.6),
+      rgba(6, 182, 212, 0.4),
+      rgba(20, 184, 166, 0.1),
+      rgba(6, 182, 212, 0.4),
+      rgba(20, 184, 166, 0.6)
+    );
+    z-index: -1;
+  }
+  .gradient-border-card > .inner {
+    @apply bg-surface-700 rounded-2xl;
+  }
+
+  /* ── Trust badge ────────────────────────────────── */
+  .trust-badge {
+    @apply flex items-center gap-1.5 text-xs text-slate-500;
+  }
+
+  /* ── Focus ring ─────────────────────────────────── */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-900;
+    transition: box-shadow 150ms ease;
   }
 }
 
@@ -151,5 +314,5 @@
   .text-gradient {
     @apply bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent;
   }
-  .border-glow { border-color: rgba(59, 130, 246, 0.4); }
+  .border-glow { border-color: rgba(20, 184, 166, 0.4); }
 }

@@ -1,46 +1,77 @@
 """
-Gemini 2.5 Flash LLM Client – implements BaseLLMClient using Google Gen AI SDK.
+Gemini LLM Client.
+
+Implements BaseLLMClient using Google's current Gen AI SDK.
+Handles text generation, streaming, and embeddings.
 """
 
 from typing import AsyncIterator
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from core.ai.llm.client import BaseLLMClient, LLMResponse, Message
-from core.config.settings import settings
 from core.config.logging import get_logger
+from core.config.settings import settings
+
 
 logger = get_logger(__name__)
 
 
 class GeminiClient(BaseLLMClient):
     """
-    Gemini 2.5 Flash implementation.
-    Handles text generation, streaming, and embedding.
+    Gemini implementation of the unified LLM client.
+
+    Responsibilities:
+    - Text generation
+    - Streaming generation
+    - Text embeddings
     """
 
     def __init__(self) -> None:
-        genai.configure(api_key=settings.google_api_key)
-        self._model = genai.GenerativeModel(settings.gemini_model)
-        self._embedding_model = settings.gemini_embedding_model
+        self._client = genai.Client(
+            api_key=settings.google_api_key,
+        )
 
-    def _to_gemini_history(
-        self, messages: list[Message]
-    ) -> tuple[list[dict], str]:
-        """Convert Message list to Gemini history + last user message."""
-        history = []
+        self._model = settings.gemini_model
+        self._embedding_model = settings.gemini_embedding_model
+        self._embedding_dimension = settings.gemini_embedding_dimension
+
+    @staticmethod
+    def _to_gemini_contents(
+        messages: list[Message],
+    ) -> tuple[list[types.Content], str]:
+        """
+        Convert internal messages to Gemini contents.
+
+        Returns:
+            Tuple containing:
+            - Conversation history
+            - Latest user message
+        """
+
+        history: list[types.Content] = []
         last_user_message = ""
 
-        for msg in messages:
-            if msg.role == "system":
-                # Gemini handles system prompts separately
+        for message in messages:
+            if message.role == "system":
                 continue
-            role = "user" if msg.role == "user" else "model"
-            history.append({"role": role, "parts": [msg.content]})
 
-        # Pop the last user message (it's sent as input, not history)
-        if history and history[-1]["role"] == "user":
-            last_user_message = history.pop()["parts"][0]
+            role = "user" if message.role == "user" else "model"
+
+            history.append(
+                types.Content(
+                    role=role,
+                    parts=[
+                        types.Part.from_text(
+                            text=message.content,
+                        )
+                    ],
+                )
+            )
+
+        if history and history[-1].role == "user":
+            last_user_message = history.pop().parts[0].text
 
         return history, last_user_message
 
@@ -52,43 +83,74 @@ class GeminiClient(BaseLLMClient):
         max_tokens: int | None = None,
         system_prompt: str | None = None,
     ) -> LLMResponse:
-        """Generate a full response from Gemini."""
-        temp = temperature if temperature is not None else settings.gemini_temperature
-        max_tok = max_tokens if max_tokens is not None else settings.gemini_max_tokens
+        """Generate a complete response from Gemini."""
 
-        generation_config = genai.types.GenerationConfig(
-            temperature=temp,
-            max_output_tokens=max_tok,
+        temperature = (
+            temperature
+            if temperature is not None
+            else settings.gemini_temperature
         )
 
-        # Extract system prompt from messages if not provided
+        max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else settings.gemini_max_tokens
+        )
+
         if system_prompt is None:
-            system_msgs = [m for m in messages if m.role == "system"]
-            if system_msgs:
-                system_prompt = system_msgs[0].content
+            system_messages = [
+                message
+                for message in messages
+                if message.role == "system"
+            ]
 
-        model = genai.GenerativeModel(
-            settings.gemini_model,
+            if system_messages:
+                system_prompt = system_messages[0].content
+
+        history, user_input = self._to_gemini_contents(messages)
+
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
             system_instruction=system_prompt,
-            generation_config=generation_config,
         )
-
-        history, user_input = self._to_gemini_history(messages)
-        chat = model.start_chat(history=history)
 
         try:
-            response = await chat.send_message_async(user_input)
-            return LLMResponse(
-                content=response.text,
-                model=settings.gemini_model,
-                usage={
-                    "prompt_tokens": response.usage_metadata.prompt_token_count,
-                    "completion_tokens": response.usage_metadata.candidates_token_count,
-                    "total_tokens": response.usage_metadata.total_token_count,
-                },
+            response = await self._client.aio.chats.create(
+                model=self._model,
+                history=history,
+                config=config,
+            ).send_message(
+                message=user_input,
             )
-        except Exception as e:
-            logger.error("Gemini generation failed", error=str(e))
+
+            usage = {}
+
+            if response.usage_metadata:
+                usage = {
+                    "prompt_tokens": (
+                        response.usage_metadata.prompt_token_count
+                    ),
+                    "completion_tokens": (
+                        response.usage_metadata.candidates_token_count
+                    ),
+                    "total_tokens": (
+                        response.usage_metadata.total_token_count
+                    ),
+                }
+
+            return LLMResponse(
+                content=response.text or "",
+                model=self._model,
+                usage=usage,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "Gemini generation failed",
+                error=str(exc),
+                model=self._model,
+            )
             raise
 
     async def stream(
@@ -98,43 +160,119 @@ class GeminiClient(BaseLLMClient):
         temperature: float | None = None,
         system_prompt: str | None = None,
     ) -> AsyncIterator[str]:
-        """Stream tokens from Gemini."""
-        temp = temperature if temperature is not None else settings.gemini_temperature
+        """Stream a response from Gemini."""
 
-        system_msgs = [m for m in messages if m.role == "system"]
-        if system_prompt is None and system_msgs:
-            system_prompt = system_msgs[0].content
+        temperature = (
+            temperature
+            if temperature is not None
+            else settings.gemini_temperature
+        )
 
-        model = genai.GenerativeModel(
-            settings.gemini_model,
+        if system_prompt is None:
+            system_messages = [
+                message
+                for message in messages
+                if message.role == "system"
+            ]
+
+            if system_messages:
+                system_prompt = system_messages[0].content
+
+        history, user_input = self._to_gemini_contents(messages)
+
+        config = types.GenerateContentConfig(
+            temperature=temperature,
             system_instruction=system_prompt,
-            generation_config=genai.types.GenerationConfig(temperature=temp),
         )
 
-        history, user_input = self._to_gemini_history(messages)
-        chat = model.start_chat(history=history)
+        try:
+            chat = self._client.aio.chats.create(
+                model=self._model,
+                history=history,
+                config=config,
+            )
 
-        async for chunk in await chat.send_message_async(user_input, stream=True):
-            if chunk.text:
-                yield chunk.text
+            async for chunk in await chat.send_message_stream(
+                message=user_input,
+            ):
+                if chunk.text:
+                    yield chunk.text
 
-    async def embed(self, text: str) -> list[float]:
-        """Generate an embedding vector using Gemini's embedding model."""
-        result = await genai.embed_content_async(
-            model=self._embedding_model,
-            content=text,
-            task_type="retrieval_document",
-        )
-        return result["embedding"]
+        except Exception as exc:
+            logger.error(
+                "Gemini streaming failed",
+                error=str(exc),
+                model=self._model,
+            )
+            raise
 
+    async def embed(
+        self,
+        text: str,
+        *,
+        task_type: str = "RETRIEVAL_DOCUMENT",
+    ) -> list[float]:
+        """
+        Generate an embedding using Gemini.
 
-# Singleton instance
+        RETRIEVAL_DOCUMENT:
+            Used when indexing documents into Qdrant.
+
+        RETRIEVAL_QUERY:
+            Used when embedding a user's search/query text.
+        """
+
+        try:
+            response = await self._client.aio.models.embed_content(
+                model=self._embedding_model,
+                contents=text,
+                config=types.EmbedContentConfig(
+                    task_type=task_type,
+                    output_dimensionality=self._embedding_dimension,
+                ),
+            )
+
+            if not response.embeddings:
+                raise RuntimeError(
+                    "Gemini returned no embedding."
+                )
+
+            embedding = response.embeddings[0].values
+
+            if not embedding:
+                raise RuntimeError(
+                    "Gemini returned an empty embedding."
+                )
+
+            if len(embedding) != self._embedding_dimension:
+                raise RuntimeError(
+                    "Unexpected embedding dimension: "
+                    f"expected {self._embedding_dimension}, "
+                    f"got {len(embedding)}"
+                )
+
+            return list(embedding)
+
+        except Exception as exc:
+            logger.error(
+                "Gemini embedding failed",
+                error=str(exc),
+                model=self._embedding_model,
+                task_type=task_type,
+            )
+            raise
+
+# Singleton
+
 _gemini_client: GeminiClient | None = None
 
 
 def get_llm_client() -> GeminiClient:
-    """Get singleton Gemini client."""
+    """Return the singleton Gemini client."""
+
     global _gemini_client
+
     if _gemini_client is None:
         _gemini_client = GeminiClient()
+
     return _gemini_client

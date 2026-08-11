@@ -2,6 +2,8 @@
 Qdrant Retriever – vector similarity search with optional filters.
 """
 
+from alembic.util import exc
+from mako import filters
 from typing import Any
 
 from qdrant_client.models import Filter, FieldCondition, MatchValue
@@ -35,18 +37,24 @@ class QdrantRetriever:
         Returns:
             List of dicts with 'score' and 'payload' keys.
         """
+
         qdrant_filter = None
+
         if filters:
             conditions = [
-                FieldCondition(key=k, match=MatchValue(value=v))
-                for k, v in filters.items()
+                FieldCondition(
+                    key=key,
+                    match=MatchValue(value=value),
+                )
+                for key, value in filters.items()
             ]
+
             qdrant_filter = Filter(must=conditions)
 
         try:
-            results = await self.client.search(
+            result = await self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 limit=top_k,
                 score_threshold=score_threshold,
                 query_filter=qdrant_filter,
@@ -54,11 +62,20 @@ class QdrantRetriever:
             )
 
             return [
-                {"score": r.score, "payload": r.payload or {}, "id": str(r.id)}
-                for r in results
+                {
+                    "score": point.score,
+                    "payload": point.payload or {},
+                    "id": str(point.id),
+                }
+                for point in result.points
             ]
-        except Exception as e:
-            logger.error("Qdrant search failed", error=str(e), collection=self.collection_name)
+
+        except Exception as exc:
+            logger.error(
+                "Qdrant search failed",
+                error=str(exc),
+                collection=self.collection_name,
+            )
             return []
 
     async def upsert(self, points: list[dict[str, Any]]) -> None:

@@ -51,6 +51,12 @@ class BaseLLMClient(ABC):
         ...
 
     @abstractmethod
-    async def embed(self, text: str) -> list[float]:
+    async def embed(
+        self,
+        text: str,
+        *,
+        task_type: str = "RETRIEVAL_DOCUMENT",
+)   -> list[float]:
         """Generate an embedding vector for the given text."""
         ...
+        

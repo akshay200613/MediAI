@@ -1,0 +1,107 @@
+{
+  "hospital_name": "Baby Memorial Hospital (BMH) Kozhikode",
+  "last_updated": "2026-08-10",
+  "data_collection_note": "Compiled from BMH's official website and secondary healthcare directories. Verify against live site before production use, as prices, tie-ups, and services change over time.",
+
+  "documents": [
+    {
+      "id": "bmh-kzk-overview",
+      "category": "general_info",
+      "source_url": "https://www.babymemorialhospitals.com/hospitals/bmh-kozhikode",
+      "content": "Baby Memorial Hospital (BMH) Kozhikode was founded in 1987 by Dr. K. G. Alexander, named in memory of his father K. V. Varghese ('Baby'). It is a multi-specialty tertiary care hospital serving the Malabar region of North Kerala for over 38 years. Tagline: 'More Than Care @ Kozhikode'. Google rating: 4.3."
+    },
+    {
+      "id": "bmh-kzk-address-contact",
+      "category": "contact_info",
+      "source_url": "https://www.babymemorialhospitals.com/hospitals/bmh-kozhikode",
+      "content": "Address: Indira Gandhi Road, Arayidathupalam, Kozhikode, Kerala - 673004. Main line: 0495 2777 777. Emergency: +91 97472 00002. WhatsApp: +91 70129 99929. Email: info@babymhospital.org. Nearby transit: KSRTC Central Bus Station (Palayam) ~1.5 km/5 min; Kozhikode Railway Station ~3 km/10 min; Kozhikode International Airport ~26 km/45 min."
+    },
+    {
+      "id": "bmh-kzk-infrastructure",
+      "category": "facilities",
+      "source_url": "https://www.babymemorialhospitals.com/hospitals/bmh-kozhikode",
+      "content": "Campus size: 4.76 acres. Total beds: 490, including 100 ICU beds, 23 ER beds, and 161 day-care beds. 16 operation theatres and 3 Cath Labs, including one Biplane Cath Lab. Diagnostic equipment includes PET-CT, two 1.5T MRI units, Gamma Camera SPECT, digital mammography, and digital X-ray. Surgical robotics: Da Vinci Surgical Robot, CORI Ortho Robot. Oncology equipment: LINAC TrueBeam, Brachytherapy unit, Holmium Laser (160W)."
+    },
+    {
+      "id": "bmh-kzk-accreditations",
+      "category": "accreditations",
+      "source_url": "https://www.babymemorialhospitals.com/hospitals/bmh-kozhikode",
+      "content": "Accreditations and awards include: NABH Accredited, NABL Accredited, NABH Digital Health Standards (Gold Category), NABH Emergency Services, NABH Nursing Excellence, NABH Accredited Ethics Committee, ISO 9001:2015 & 14001:2015, Advanced Stroke Centre recognition, Kerala State Pollution Control Award 2025, CAHO Excellence Award for Facility Management, and an award for 'Best Use of AI in Healthcare'."
+    },
+    {
+      "id": "bmh-kzk-specialties",
+      "category": "services_specialties",
+      "source_url": "https://www.babymemorialhospitals.com/specialities?location=kozhikode",
+      "content": "Major clinical departments include: Cardiology, Cardiovascular Thoracic Surgery, Cardiac Anaesthesiology, Orthopaedic & Arthroscopic Surgery, Joint Replacement, Neurology, Neurosurgery, Spine Surgery, Urology (incl. Advanced Robotic & Laser Urology), Nephrology, Kidney Transplant, Liver Transplant, Liver & HPB Surgery, Surgical & Medical Gastroenterology/GI Endoscopy, General & Laparoscopic Surgery, Medical & Surgical Oncology, Radiation Oncology, Haematology/Haemato-Oncology & BMT, Paediatrics & Neonatology, Paediatric Surgery & Orthopaedics, Obstetrics & Gynaecology, Foetal Medicine, Infertility & Reproductive Medicine, ENT & Head-Neck Surgery, Ophthalmology, Dermatology & Cosmetology, Plastic/Aesthetic/Reconstructive Surgery, Endocrinology & Endocrine Surgery, Pulmonology, Psychiatry & Clinical Psychology, Rheumatology & Clinical Immunology, Vascular Surgery, Critical Care Medicine, Emergency Medicine, Interventional Radiology, Nuclear Medicine, Dental, Robotic Surgery, Sports Medicine, and more. NAVA Cancer Institute operates as a dedicated oncology unit."
+    },
+    {
+      "id": "bmh-kzk-op-appointments",
+      "category": "patient_process_outpatient",
+      "source_url": "https://www.babymemorialhospitals.com/patient-care-services",
+      "content": "OPD appointment booking channels: Phone (0495-3535353 / 0495-2777888 / 0495-2777777, available round the clock), self-service kiosks at hospital entrances (B Block ground floor, C Block ground floor, C Block 1st floor), the online appointment portal, or the BMH mobile app (Play Store). First-time visitors get an SMS with a pre-registration link after booking. A reminder IVR call is placed the day before the appointment, through which the booking can also be cancelled or rescheduled. A feedback IVR call follows the consultation."
+    },
+    {
+      "id": "bmh-kzk-first-visit",
+      "category": "patient_process_outpatient",
+      "source_url": "https://www.babymemorialhospitals.com/patient-care-services",
+      "content": "What to bring on a first visit: government-issued photo ID, referral letter (if any), ESI/ECHS letter (if applicable), and BMH registration card (if previously registered). Returning patients don't need to re-register — billing counter staff can retrieve their UHID (Unique Hospital Identification number)."
+    },
+    {
+      "id": "bmh-kzk-payments-billing",
+      "category": "billing_payment",
+      "source_url": "https://www.babymemorialhospitals.com/patient-care-services",
+      "content": "Accepted payment modes: major debit/credit cards and UPI. Payments can be made at billing counters, self-service kiosks, or via MPOS (mobile point-of-sale) devices carried by front-office/CRE staff. Some billing counters operate 24/7; others follow OPD hours. Investigation/procedure billing must be completed at OP counters before proceeding to the lab or procedure room."
+    },
+    {
+      "id": "bmh-kzk-facility-services",
+      "category": "facilities_amenities",
+      "source_url": "https://www.myupchar.com/en/hospitals/kozhikode/baby-memorial-hospital-ltd-1454",
+      "content": "On-site patient amenities reported include: 24x7 pharmacy, ambulance service, blood bank, cafeteria, cath lab, diagnostic lab, pathology lab, and radiology. OPD hours run all days from 10 AM to 8 PM. Wheelchair/trolley assistance is available at hospital entrances; support can be requested from Customer Relations staff during a visit."
+    },
+    {
+      "id": "bmh-kzk-lab-results",
+      "category": "patient_process_outpatient",
+      "source_url": "https://www.babymemorialhospitals.com/patient-care-services",
+      "content": "Lab/diagnostic results are delivered via SMS with a link once ready. Patients enter their UHID on the linked page, receive an OTP on their registered mobile number, and can then view/download the report (Android: saved to Downloads folder; iOS: pop-ups must be enabled)."
+    },
+    {
+      "id": "bmh-kzk-insurance-tpa",
+      "category": "insurance_tpa",
+      "source_url": "https://www.myupchar.com/en/hospitals/kozhikode/baby-memorial-hospital-ltd-1454",
+      "content": "Reported insurance/TPA tie-ups for BMH Kozhikode include: Aditya Birla Health Insurance, Bajaj Allianz Life Insurance, Care Health Insurance, Cholamandalam MS General Insurance, Future Generali India Life Insurance, HDFC ERGO General Insurance, ICICI Lombard General Insurance, IFFCO-Tokio General Insurance, Liberty General Insurance, Niva Bupa Health Insurance, and Star Health & Allied Insurance. BMH is also listed as a cashless-network hospital by additional insurers such as Zurich Kotak General Insurance (via their online network-hospital locator)."
+    },
+    {
+      "id": "bmh-kzk-insurance-disclaimer",
+      "category": "insurance_tpa",
+      "source_url": null,
+      "content": "IMPORTANT CAVEAT FOR RAG USE: insurer/TPA empanelment lists change frequently and can vary by specific policy or plan within the same insurer. This list should be treated as indicative, not authoritative. For a confirmed answer, the hospital's insurance desk or the specific insurer's network-hospital locator should be checked directly. Do not present this list to end users as guaranteed-current without a live verification step or an appropriate disclaimer."
+    },
+    {
+      "id": "bmh-kzk-govt-schemes",
+      "category": "insurance_tpa",
+      "source_url": "https://www.hexahealth.com/kozhikode/hospital/baby-memorial-hospital",
+      "content": "For CGHS (Central Government Health Scheme) empanelment status, patients are directed to check the official CGHS hospital list or call the hospital help desk directly. For Ayushman Bharat / PMJAY empanelment, patients are directed to check the official Ayushman Bharat hospital list. These statuses are not guaranteed stable and should be confirmed live rather than assumed from directory listings."
+    },
+    {
+      "id": "bmh-kzk-other-locations",
+      "category": "general_info",
+      "source_url": "https://www.babymemorialhospitals.com/hospitals",
+      "content": "BMH operates as a group with multiple locations: BMH Kozhikode (flagship, Indira Gandhi Rd), BMH Kannur (NH 66, Chala Bypass, Nadal), BMH Thodupuzha (River View Road, Nadal), BMH Payyanur (Annur Rd), BMH Vadakara (NH Bypass, Chorode), and BMH Perumbavoor. Each has separate contact numbers and, in some cases, separate online appointment/HR systems."
+    },
+    {
+      "id": "bmh-kzk-useful-links",
+      "category": "reference_links",
+      "source_url": "https://www.babymemorialhospitals.com/",
+      "content": "Other relevant BMH website sections for RAG expansion: Health Checkup Packages (/health-care-packages), Service Performance (/service-performance), Stents and Implant Pricing (/stents-and-implant-pricing), Patient Care full page (/patient-care-services, has both Out-Patient and In-Patient tabs), International Patients (/international-patients), Privacy Policy (/privacy-policy), Cookie Policy (/cookie-policy), Contact Us (/contact-us). These were not fully scraped in this pass and are good next targets."
+    }
+  ],
+
+  "not_yet_collected": [
+    "In-Patient Services tab content (admission process, room categories/tariffs, discharge process)",
+    "Stents and Implant Pricing page (transparency-mandated pricing)",
+    "Health Checkup Packages page",
+    "Full Privacy Policy and Cookie Policy text",
+    "International Patients page (visa assistance, cost estimates, etc.)",
+    "Live/current insurance-TPA list directly from hospital insurance desk (third-party directories may be outdated)"
+  ]
+}
