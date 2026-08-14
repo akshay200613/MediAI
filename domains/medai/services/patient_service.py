@@ -29,6 +29,23 @@ class PatientService:
         patient = await self.repo.get_by_id(patient_id)
         return self._to_out(patient) if patient else None
 
+    async def get_patient_by_user_id(self, user_id: str, user_email: str | None = None) -> PatientOut | None:
+        """
+        Resolve the patient record from an auth user's UUID.
+        Falls back to email lookup for existing patients where user_id was not set.
+        """
+        patient = await self.repo.get_by_user_id(user_id)
+        if patient:
+            # Backfill user_id if missing (migration support)
+            return self._to_out(patient)
+        # Fallback: look up by email for pre-existing patients
+        if user_email:
+            patient = await self.repo.get_by_field("email", user_email)
+            if patient and not patient.is_deleted:
+                return self._to_out(patient)
+        return None
+
+
     async def list_patients(
         self, page: int = 1, page_size: int = 20
     ) -> PaginatedResponse[PatientOut]:

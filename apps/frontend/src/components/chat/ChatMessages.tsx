@@ -1,135 +1,216 @@
 'use client'
-import { useRef, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { Activity, AlertTriangle, Info, BookOpen } from 'lucide-react'
-import { MessageItem } from '@/lib/hooks/useChatStore'
-import { useStreamingText } from '@/lib/hooks/useStreamingText'
-import { easeOutExpo } from '@/lib/motion'
 
-function ChatMessageBubble({ message, isLast }: { message: MessageItem; isLast: boolean }) {
-  const isUser = message.role === 'user'
-  const isAi = message.role === 'assistant'
+import React, { useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  User,
+  Stethoscope,
+  FileText,
+  Search,
+  Layers,
+  AlertTriangle,
+  RotateCcw,
+  CheckCircle2,
+  Sparkles,
+} from 'lucide-react'
+import type { ChatMessage, Citation } from '@/types/chat'
 
-  // Character-by-character typewriter effect for the newest AI response
-  const shouldStream = isAi && isLast && message.isStreaming
-  const { displayedText, isDone } = useStreamingText(message.content, shouldStream)
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: isUser ? 20 : -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={easeOutExpo}
-      className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
-    >
-      {/* AI Logo Mark */}
-      {isAi && (
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white shadow-glow flex-shrink-0 mt-1">
-          <Activity className="w-4 h-4" />
-        </div>
-      )}
-
-      {/* Message Content Container */}
-      <div className={`space-y-2 ${isUser ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>
-        {/* User Message Bubble */}
-        {isUser && (
-          <p className="text-xs sm:text-sm text-slate-100 leading-relaxed whitespace-pre-wrap">
-            {message.content}
-          </p>
-        )}
-
-        {/* AI Message (Bare text + MedAI Mark for maximum readability) */}
-        {isAi && (
-          <div className="space-y-3">
-            {/* Callout styling if flagged */}
-            {message.calloutType === 'amber' && (
-              <div className="callout-amber">
-                <Info className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                <div className="text-xs text-amber-200">
-                  <span className="font-semibold">Clinical Caution:</span> Information retrieved from Knowledge Base should be correlated with direct patient examination.
-                </div>
-              </div>
-            )}
-
-            {message.calloutType === 'red' && (
-              <div className="callout-red">
-                <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                <div className="text-xs text-red-200">
-                  <span className="font-semibold">Urgent Medical Triage Flagged:</span> Recommend immediate clinical evaluation.
-                </div>
-              </div>
-            )}
-
-            {/* Formatted Response Body with Streaming Cursor */}
-            <div className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans">
-              {displayedText}
-              {!isDone && <span className="typing-cursor" />}
-            </div>
-
-            {/* RAG Sources Citations */}
-            {message.sources && message.sources.length > 0 && (
-              <div className="mt-3 pt-2 border-t border-white/5 space-y-1">
-                <p className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
-                  <BookOpen className="w-3 h-3 text-teal-400" /> RAG Knowledge Sources:
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {message.sources.map((src, i) => (
-                    <span
-                      key={i}
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-surface-600/60 border border-white/5 text-slate-400"
-                    >
-                      {src.title || `Document Chunk #${i + 1}`} (Score: {(src.score * 100).toFixed(0)}%)
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </motion.div>
-  )
+interface ChatMessagesProps {
+  messages: ChatMessage[]
+  isGenerating?: boolean
+  userName?: string
+  onSelectCitation?: (citationId: string, citations: Citation[]) => void
+  onRetryMessage?: (messageContent: string) => void
 }
 
-export function ChatMessages({
+export const ChatMessages: React.FC<ChatMessagesProps> = ({
   messages,
   isGenerating,
-}: {
-  messages: MessageItem[]
-  isGenerating: boolean
-}) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  userName,
+  onSelectCitation,
+  onRetryMessage,
+}) => {
+  const scrollRef = useRef<HTMLDivElement>(null)
 
+  // Auto-scroll to latest message
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
   }, [messages, isGenerating])
 
+  // Simple Markdown Formatter Helper
+  const renderMarkdown = (text: string) => {
+    if (!text) return null
+
+    // Split into paragraphs / lines
+    const lines = text.split('\n')
+    return (
+      <div className="space-y-2 text-xs sm:text-sm text-slate-200 leading-relaxed font-sans">
+        {lines.map((line, idx) => {
+          if (!line.trim()) return <div key={idx} className="h-1.5" />
+
+          // Headers
+          if (line.startsWith('### ')) {
+            return (
+              <h4 key={idx} className="font-semibold text-sm text-slate-100 mt-3 mb-1">
+                {line.replace('### ', '')}
+              </h4>
+            )
+          }
+          if (line.startsWith('## ')) {
+            return (
+              <h3 key={idx} className="font-semibold text-base text-slate-100 mt-4 mb-1 border-b border-slate-800 pb-1">
+                {line.replace('## ', '')}
+              </h3>
+            )
+          }
+
+          // Bullet points
+          if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+            const cleanText = line.trim().replace(/^[-*]\s+/, '')
+            return (
+              <div key={idx} className="flex items-start gap-2 pl-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0 mt-1.5" />
+                <span>{formatInlineFormatting(cleanText)}</span>
+              </div>
+            )
+          }
+
+          // Default text line
+          return <p key={idx}>{formatInlineFormatting(line)}</p>
+        })}
+      </div>
+    )
+  }
+
+  // Format bold / inline code
+  const formatInlineFormatting = (str: string) => {
+    // Bold **text**
+    const parts = str.split(/(\*\*.*?\*\*|`.*?`)/g)
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return (
+          <strong key={i} className="font-semibold text-slate-100">
+            {part.slice(2, -2)}
+          </strong>
+        )
+      }
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return (
+          <code key={i} className="px-1 py-0.5 rounded bg-slate-950 text-teal-300 font-mono text-[11px] border border-slate-800">
+            {part.slice(1, -1)}
+          </code>
+        )
+      }
+      return part
+    })
+  }
+
   return (
-    <div className="w-full max-w-[720px] mx-auto px-4 py-6 space-y-6">
-      {messages.map((msg, idx) => (
-        <ChatMessageBubble key={msg.id} message={msg} isLast={idx === messages.length - 1} />
-      ))}
+    <div
+      ref={scrollRef}
+      className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 scroll-smooth"
+      role="log"
+      aria-live="polite"
+      aria-label="Clinical chat trajectory"
+    >
+      <AnimatePresence initial={false}>
+        {messages.map((msg, index) => {
+          const isUser = msg.role === 'user'
 
-      {/* Typing Indicator while waiting for initial chunk */}
-      {isGenerating && messages[messages.length - 1]?.role === 'user' && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-3"
-        >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white shadow-glow flex-shrink-0">
-            <Activity className="w-4 h-4 animate-pulse" />
-          </div>
-          <div className="chat-bubble-ai">
-            <div className="bounce-dots py-1">
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
-        </motion.div>
-      )}
+          return (
+            <motion.div
+              key={msg.id || index}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className={`flex items-start gap-3 max-w-3xl ${isUser ? 'ml-auto justify-end' : 'mr-auto'}`}
+            >
+              {/* Assistant Avatar */}
+              {!isUser && (
+                <div className="w-8 h-8 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 shrink-0 mt-0.5">
+                  <Stethoscope className="w-4 h-4" />
+                </div>
+              )}
 
-      <div ref={bottomRef} />
+              {/* Message Content Bubble */}
+              <div className="flex flex-col min-w-0 max-w-2xl">
+                {/* Role Label & Timestamp */}
+                <div className={`flex items-center gap-2 mb-1 text-[11px] text-slate-400 ${isUser ? 'justify-end' : ''}`}>
+                  <span className="font-medium text-slate-300">
+                    {isUser ? (userName || 'User') : 'MediAI Assistant'}
+                  </span>
+                  <span className="text-slate-400 text-[10px]">
+                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+
+                {/* Bubble Body */}
+                <div
+                  className={`p-4 rounded-2xl ${
+                    isUser
+                      ? 'bg-slate-800 border border-slate-700/80 text-slate-100 rounded-tr-sm'
+                      : 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-sm shadow-xl shadow-slate-950/40'
+                  } ${
+                    msg.calloutType === 'red'
+                      ? 'border-l-4 border-l-rose-500'
+                      : msg.calloutType === 'amber'
+                      ? 'border-l-4 border-l-amber-500'
+                      : ''
+                  }`}
+                >
+                  {/* Active Retrieval Status Banner */}
+                  {!isUser && msg.retrievalStatus && msg.retrievalStatus !== 'done' && (
+                    <div className="mb-3 p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-xs text-teal-300 font-mono">
+                      <Search className="w-3.5 h-3.5 text-teal-400 animate-spin" />
+                      <span>
+                        {msg.retrievalStatus === 'searching'
+                          ? 'Searching Knowledge Base...'
+                          : 'Processing query...'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Render Text Content */}
+                  {renderMarkdown(msg.content)}
+
+                  {/* Streaming Pulse Cursor */}
+                  {msg.isStreaming && (
+                    <span className="inline-block w-1.5 h-4 bg-teal-400 animate-pulse ml-1 align-middle rounded" />
+                  )}
+
+                  {/* Error Retry Banner */}
+                  {msg.error && (
+                    <div className="mt-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                        <span>{msg.error}</span>
+                      </div>
+                      {onRetryMessage && (
+                        <button
+                          onClick={() => onRetryMessage(messages[index - 1]?.content || '')}
+                          className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-[11px] font-medium inline-flex items-center gap-1 shrink-0"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* User Avatar */}
+              {isUser && (
+                <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0 mt-0.5">
+                  <User className="w-4 h-4" />
+                </div>
+              )}
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
     </div>
   )
 }

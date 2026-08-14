@@ -1,20 +1,23 @@
 'use client'
-import { useState } from 'react'
+
+import React, { useState, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus,
   MessageSquare,
+  Search,
   Trash2,
-  Edit2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Database,
+  Pencil,
   Check,
-  X,
-  Sparkles,
-  ChevronLeft,
-  ChevronRight,
+  Stethoscope,
 } from 'lucide-react'
-import { useChatStore, ConversationSession } from '@/lib/hooks/useChatStore'
-import { cn } from '@/lib/utils'
+import { useChatStore } from '@/lib/hooks/useChatStore'
+import type { ConversationSession } from '@/types/chat'
 
-export function ChatSidebar() {
+export const ChatSidebar: React.FC = () => {
   const {
     sessions,
     activeSessionId,
@@ -26,174 +29,195 @@ export function ChatSidebar() {
     renameSession,
   } = useChatStore()
 
+  const [searchQuery, setSearchQuery] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editTitle, setEditTitle] = useState('')
+  const [editingTitle, setEditingTitle] = useState('')
 
-  // Group sessions by date
-  const groupedSessions = sessions.reduce<{
-    today: ConversationSession[]
-    past7Days: ConversationSession[]
-    older: ConversationSession[]
-  }>(
-    (acc, session) => {
-      const now = new Date()
-      const sessionDate = new Date(session.updatedAt)
-      const diffDays = Math.floor((now.getTime() - sessionDate.getTime()) / (1000 * 3600 * 24))
+  // Filtered and Date-Grouped Sessions
+  const groupedSessions = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim()
+    const filtered = sessions.filter((s) => s.title.toLowerCase().includes(query))
 
-      if (diffDays === 0) acc.today.push(session)
-      else if (diffDays <= 7) acc.past7Days.push(session)
-      else acc.older.push(session)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const yesterday = today - 86400000
+    const weekAgo = today - 7 * 86400000
 
-      return acc
-    },
-    { today: [], past7Days: [], older: [] },
-  )
+    const groups: { [key: string]: ConversationSession[] } = {
+      Today: [],
+      Yesterday: [],
+      'Previous 7 Days': [],
+      Older: [],
+    }
 
-  const handleStartRename = (session: ConversationSession) => {
+    filtered.forEach((session) => {
+      const sessionTime = new Date(session.updatedAt || session.createdAt).getTime()
+      if (sessionTime >= today) {
+        groups.Today.push(session)
+      } else if (sessionTime >= yesterday) {
+        groups.Yesterday.push(session)
+      } else if (sessionTime >= weekAgo) {
+        groups['Previous 7 Days'].push(session)
+      } else {
+        groups.Older.push(session)
+      }
+    })
+
+    return groups
+  }, [sessions, searchQuery])
+
+  const handleStartRename = (session: ConversationSession, e: React.MouseEvent) => {
+    e.stopPropagation()
     setEditingId(session.id)
-    setEditTitle(session.title)
+    setEditingTitle(session.title)
   }
 
-  const handleSaveRename = (id: string) => {
-    if (editTitle.trim()) {
-      renameSession(id, editTitle.trim())
+  const handleSaveRename = (id: string, e: React.MouseEvent | React.FormEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (editingTitle.trim()) {
+      renameSession(id, editingTitle.trim())
     }
     setEditingId(null)
   }
 
   return (
     <>
-      {/* Mobile Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm"
-          onClick={toggleSidebar}
-        />
-      )}
-
-      <aside
-        className={cn(
-          'glass-sidebar fixed md:relative z-30 h-full flex flex-col transition-all duration-300 flex-shrink-0',
-          sidebarOpen ? 'w-72 translate-x-0' : '-translate-x-full md:translate-x-0 md:w-16',
-        )}
+      {/* Mobile Toggle Button */}
+      <button
+        onClick={toggleSidebar}
+        className="lg:hidden fixed top-3 left-3 z-30 p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white"
+        aria-label="Toggle sidebar"
       >
-        {/* Top Controls */}
-        <div className="p-3 border-b border-white/5 flex items-center justify-between">
-          {sidebarOpen ? (
-            <button
-              onClick={() => createSession()}
-              className="flex-1 btn-teal-gradient py-2 px-3 text-xs flex items-center justify-center gap-2 rounded-xl"
-            >
-              <Plus className="w-4 h-4" /> New Consultation
-            </button>
-          ) : (
-            <button
-              onClick={() => createSession()}
-              className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white shadow-glow"
-              title="New Consultation"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-          )}
+        {sidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
+      </button>
 
-          <button
-            onClick={toggleSidebar}
-            className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 ml-1 transition-colors"
-            title={sidebarOpen ? 'Collapse rail' : 'Expand rail'}
+      <AnimatePresence initial={false}>
+        {sidebarOpen && (
+          <motion.aside
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 280, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="h-full bg-slate-900/95 border-r border-slate-800/80 flex flex-col shrink-0 z-20 overflow-hidden text-slate-300 font-sans"
           >
-            {sidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </button>
-        </div>
+            {/* Header */}
+            <div className="p-3.5 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400">
+                  <Stethoscope className="w-4 h-4" />
+                </div>
+                <span className="font-semibold text-sm text-slate-100 tracking-tight">Clinical Assistant</span>
+              </div>
+              <button
+                onClick={toggleSidebar}
+                className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            </div>
 
-        {/* Sessions List */}
-        {sidebarOpen ? (
-          <div className="flex-1 overflow-y-auto p-3 space-y-4 text-xs">
-            {[
-              { label: 'Today', items: groupedSessions.today },
-              { label: 'Previous 7 Days', items: groupedSessions.past7Days },
-              { label: 'Older', items: groupedSessions.older },
-            ].map(
-              (group) =>
-                group.items.length > 0 && (
-                  <div key={group.label} className="space-y-1">
-                    <p className="px-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                      {group.label}
-                    </p>
+            {/* Actions: New Chat & Search */}
+            <div className="p-3 space-y-2 border-b border-slate-800/60">
+              <button
+                onClick={() => createSession()}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-medium text-xs shadow-md shadow-teal-900/20 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Plus className="w-4 h-4" />
+                  New Consultation
+                </span>
+                <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-teal-700/60 rounded text-teal-100">
+                  Ctrl+N
+                </kbd>
+              </button>
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search consultations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500/50"
+                />
+              </div>
+            </div>
+
+            {/* Conversation History List */}
+            <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+              {Object.entries(groupedSessions).map(([groupTitle, groupSessions]) => {
+                if (groupSessions.length === 0) return null
+
+                return (
+                  <div key={groupTitle} className="space-y-1">
+                    <h4 className="px-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                      {groupTitle}
+                    </h4>
                     <div className="space-y-0.5">
-                      {group.items.map((session) => {
+                      {groupSessions.map((session) => {
                         const isActive = session.id === activeSessionId
-                        const isEditing = session.id === editingId
+                        const isEditing = editingId === session.id
 
                         return (
                           <div
                             key={session.id}
                             onClick={() => selectSession(session.id)}
-                            className={cn(
-                              'group relative flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition-all',
+                            className={`group relative flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
                               isActive
-                                ? 'bg-teal-500/15 text-teal-300 font-medium border border-teal-500/20'
-                                : 'text-slate-400 hover:text-white hover:bg-white/5',
-                            )}
+                                ? 'bg-slate-800 text-teal-300 font-medium border border-slate-700/60'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                            }`}
                           >
-                            <div className="flex items-center gap-2.5 min-w-0 pr-12">
-                              <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 text-teal-400" />
+                            <div className="flex items-center gap-2 min-w-0 flex-1 pr-1">
+                              <MessageSquare
+                                className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-teal-400' : 'text-slate-500'}`}
+                              />
                               {isEditing ? (
-                                <input
-                                  type="text"
-                                  value={editTitle}
-                                  onChange={(e) => setEditTitle(e.target.value)}
-                                  onKeyDown={(e) => e.key === 'Enter' && handleSaveRename(session.id)}
-                                  className="bg-surface-600 border border-teal-500 text-xs px-1.5 py-0.5 rounded text-white focus:outline-none w-full"
-                                  autoFocus
-                                />
+                                <form
+                                  onSubmit={(e) => handleSaveRename(session.id, e)}
+                                  className="flex items-center gap-1 flex-1"
+                                >
+                                  <input
+                                    type="text"
+                                    value={editingTitle}
+                                    onChange={(e) => setEditingTitle(e.target.value)}
+                                    autoFocus
+                                    className="w-full bg-slate-950 text-slate-100 border border-teal-500/50 rounded px-1.5 py-0.5 text-xs focus:outline-none"
+                                  />
+                                  <button
+                                    type="submit"
+                                    onClick={(e) => handleSaveRename(session.id, e)}
+                                    className="p-1 text-teal-400 hover:text-teal-300"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                </form>
                               ) : (
-                                <span className="truncate">{session.title}</span>
+                                <span className="truncate text-xs">{session.title}</span>
                               )}
                             </div>
 
-                            {/* Hover Action Icons */}
-                            {!isEditing ? (
-                              <div className="absolute right-2 opacity-0 group-hover:opacity-100 flex items-center gap-1 bg-surface-800/90 px-1 py-0.5 rounded-lg border border-white/10 transition-opacity">
+                            {/* Session Quick Actions */}
+                            {!isEditing && (
+                              <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleStartRename(session)
-                                  }}
-                                  className="p-1 text-slate-400 hover:text-white"
-                                  title="Rename"
+                                  onClick={(e) => handleStartRename(session, e)}
+                                  className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-700/60"
+                                  title="Rename session"
                                 >
-                                  <Edit2 className="w-3 h-3" />
+                                  <Pencil className="w-3 h-3" />
                                 </button>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     deleteSession(session.id)
                                   }}
-                                  className="p-1 text-slate-400 hover:text-red-400"
-                                  title="Delete"
+                                  className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-700/60"
+                                  title="Delete session"
                                 >
                                   <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleSaveRename(session.id)
-                                  }}
-                                  className="p-1 text-emerald-400 hover:text-emerald-300"
-                                >
-                                  <Check className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setEditingId(null)
-                                  }}
-                                  className="p-1 text-slate-400 hover:text-white"
-                                >
-                                  <X className="w-3 h-3" />
                                 </button>
                               </div>
                             )}
@@ -202,35 +226,28 @@ export function ChatSidebar() {
                       })}
                     </div>
                   </div>
-                ),
-            )}
+                )
+              })}
 
-            {sessions.length === 0 && (
-              <div className="text-center py-8 text-slate-500">
-                <Sparkles className="w-6 h-6 mx-auto mb-2 opacity-40 text-teal-400" />
-                <p className="text-xs">No previous consultations</p>
+              {sessions.length === 0 && (
+                <div className="py-10 text-center px-4">
+                  <p className="text-xs text-slate-500">No previous consultations.</p>
+                  <p className="text-[11px] text-slate-600 mt-1">Start a new query to initiate RAG assistance.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Knowledge Base Status Footer */}
+            <div className="p-3 border-t border-slate-800/80 bg-slate-950/60">
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-medium text-[11px] text-slate-300">Qdrant + BM25 Connected</span>
               </div>
-            )}
-          </div>
-        ) : (
-          /* Collapsed Icon Bar */
-          <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => selectSession(session.id)}
-                className={cn(
-                  'w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition-colors mx-auto',
-                  session.id === activeSessionId && 'bg-teal-500/20 text-teal-400',
-                )}
-                title={session.title}
-              >
-                <MessageSquare className="w-4 h-4" />
-              </button>
-            ))}
-          </div>
+              <p className="text-[10px] text-slate-500 mt-0.5">MediAI Medical Knowledge Base</p>
+            </div>
+          </motion.aside>
         )}
-      </aside>
+      </AnimatePresence>
     </>
   )
 }

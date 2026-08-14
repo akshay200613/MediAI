@@ -1,11 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import {
   Heart,
-  Moon,
-  Footprints,
   Calendar,
   Sparkles,
   ArrowUpRight,
@@ -14,7 +13,6 @@ import {
   FileUp,
   MessageSquare,
   Activity,
-  Clock,
   UserPlus,
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth/context'
@@ -119,6 +117,7 @@ function MetricCard({
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [upcoming, setUpcoming] = useState<Appointment[]>([])
@@ -142,6 +141,19 @@ export default function DashboardPage() {
   const timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 
   useEffect(() => {
+    if (user?.role === 'admin' || user?.role === 'super_admin') {
+      router.replace('/admin')
+      return
+    }
+    if (user?.role === 'doctor') {
+      router.replace(user.is_verified ? '/doctor' : '/pending-approval')
+      return
+    }
+    if (user?.role === 'patient' || user?.role === 'user') {
+      router.replace('/patient')
+      return
+    }
+
     async function loadData() {
       try {
         const [pRes, dRes, aRes, uRes] = await Promise.all([
@@ -164,7 +176,7 @@ export default function DashboardPage() {
       }
     }
     loadData()
-  }, [])
+  }, [user, router])
 
   return (
     <motion.div
@@ -208,52 +220,26 @@ export default function DashboardPage() {
       </motion.div>
 
       {/* ── 3. Metric Cards Row ─────────────────────────────────────────────────── */}
-      <motion.div variants={fadeSlideUp} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          title="Avg Heart Rate"
-          value={72}
-          unit="bpm"
-          change="-2%"
-          isPositive={true}
-          icon={Heart}
-          color="bg-gradient-to-br from-rose-500 to-pink-600"
-          sparklineData={[68, 70, 75, 71, 74, 72, 72]}
-          loading={loading}
-        />
-
-        <MetricCard
-          title="Sleep Quality"
-          value={84}
-          unit="%"
-          change="+5%"
-          isPositive={true}
-          icon={Moon}
-          color="bg-gradient-to-br from-violet-500 to-purple-600"
-          sparklineData={[70, 72, 78, 80, 82, 81, 84]}
-          loading={loading}
-        />
-
-        <MetricCard
-          title="Daily Steps Avg"
-          value={8420}
-          unit="steps"
-          change="+12%"
-          isPositive={true}
-          icon={Footprints}
-          color="bg-gradient-to-br from-teal-500 to-emerald-600"
-          sparklineData={[6000, 7200, 6800, 8100, 7900, 8200, 8420]}
-          loading={loading}
-        />
-
+      <motion.div variants={fadeSlideUp} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
         <MetricCard
           title="Upcoming Appointments"
-          value={stats.upcomingCount || 4}
+          value={stats.upcomingCount}
           unit="scheduled"
-          change="Today"
+          change="Live"
           isPositive={true}
           icon={Calendar}
           color="bg-gradient-to-br from-cyan-500 to-blue-600"
-          sparklineData={[2, 3, 5, 4, 3, 6, stats.upcomingCount || 4]}
+          sparklineData={[1, 2, 1, 3, 2, 4, stats.upcomingCount || 0]}
+          loading={loading}
+        />
+        <MetricCard
+          title="Total Appointments"
+          value={stats.appointments}
+          unit="total"
+          isPositive={true}
+          icon={Activity}
+          color="bg-gradient-to-br from-teal-500 to-emerald-600"
+          sparklineData={[0, 1, 2, 3, 4, 5, stats.appointments || 0]}
           loading={loading}
         />
       </motion.div>
@@ -271,7 +257,7 @@ export default function DashboardPage() {
             <FileUp className="w-4 h-4 text-cyan-400" /> Upload Record
           </button>
         </Link>
-        <Link href="/appointments/new">
+        <Link href="/patient/book">
           <button className="btn-pill">
             <Plus className="w-4 h-4 text-emerald-400" /> Book Appointment
           </button>
@@ -284,61 +270,44 @@ export default function DashboardPage() {
         <motion.div variants={fadeSlideUp} className="lg:col-span-2">
           <Card padding="md">
             <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-teal-400" /> Recent Clinic Activity
+              <Activity className="w-4 h-4 text-teal-400" /> Recent Appointments
             </h3>
 
             {loading ? (
               <Skeleton lines={4} />
+            ) : upcoming.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="w-12 h-12 rounded-full bg-surface-600/40 flex items-center justify-center mb-3">
+                  <Activity className="w-6 h-6 text-slate-500" />
+                </div>
+                <p className="text-xs font-semibold text-slate-300">No recent activity yet</p>
+                <p className="text-[11px] text-slate-500 mt-1 max-w-[220px]">
+                  Appointments and AI consultations will appear here once they happen.
+                </p>
+              </div>
             ) : (
-              <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-white/10">
-                {[
-                  {
-                    icon: UserPlus,
-                    title: 'New Patient Registered',
-                    desc: 'Eleanor Vance added to cardiology records',
-                    time: '15m ago',
-                    color: 'text-teal-400 bg-teal-500/10 border-teal-500/20',
-                  },
-                  {
-                    icon: Sparkles,
-                    title: 'AI Consultation Completed',
-                    desc: 'RAG search query regarding lab results for Patient #892',
-                    time: '1h ago',
-                    color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
-                  },
-                  {
-                    icon: Calendar,
-                    title: 'Appointment Confirmed',
-                    desc: 'Dr. Sarah Jenkins scheduled with Marcus Brody',
-                    time: '2h ago',
-                    color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-                  },
-                  {
-                    icon: Clock,
-                    title: 'System Health Check Passed',
-                    desc: 'PostgreSQL, Redis & Qdrant database clusters healthy',
-                    time: '4h ago',
-                    color: 'text-slate-400 bg-slate-500/10 border-slate-500/20',
-                  },
-                ].map((item, idx) => {
-                  const Icon = item.icon
-                  return (
-                    <motion.div
-                      key={idx}
-                      whileHover={{ x: 4 }}
-                      className="relative flex items-start justify-between gap-4 p-3 rounded-xl hover:bg-white/[0.03] transition-colors"
-                    >
-                      <div className={`absolute -left-6 top-3 w-5 h-5 rounded-full border flex items-center justify-center ${item.color}`}>
-                        <Icon className="w-3 h-3" />
+              <div className="space-y-3">
+                {upcoming.slice(0, 5).map((appt) => (
+                  <div
+                    key={appt.id}
+                    className="p-3 rounded-xl bg-surface-600/40 border border-white/5 flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shrink-0">
+                        <Calendar className="w-4 h-4" />
                       </div>
-                      <div>
-                        <h4 className="text-xs font-semibold text-white">{item.title}</h4>
-                        <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white capitalize truncate">
+                          {appt.appointment_type} Consultation
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{formatDateTime(appt.scheduled_at)}</p>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap">{item.time}</span>
-                    </motion.div>
-                  )
-                })}
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 capitalize shrink-0">
+                      {appt.status}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </Card>

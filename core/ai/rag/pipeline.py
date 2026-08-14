@@ -162,7 +162,7 @@ class RAGPipeline:
            fusion_top_k=10,
            rerank_top_k=5,
            rrf_k=60,
-           enable_reranking=False,
+           enable_reranking=True,
         )
 
         self.system_prompt = system_prompt
@@ -574,12 +574,23 @@ class RAGPipeline:
         # Step 6: Build RAG prompt
         # ------------------------------------------------------------------
 
+        # Build source metadata list for enriched prompt context
+        source_metadata = [
+            {
+                "category": result.metadata.get("category"),
+                "title": result.metadata.get("title"),
+                "hospital_name": result.metadata.get("hospital_name") or result.metadata.get("hospital"),
+            }
+            for result in retrieved
+        ]
+
         messages = build_rag_prompt(
             query=user_query,
             context_chunks=context_chunks,
             conversation_history=(
                 conversation_history or []
             ),
+            source_metadata=source_metadata,
         )
 
         # ------------------------------------------------------------------

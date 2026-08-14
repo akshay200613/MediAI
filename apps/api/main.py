@@ -49,6 +49,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("MedAI shutdown complete")
 
 
+from core.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+
 def create_app() -> FastAPI:
     """Application factory."""
     app = FastAPI(
@@ -60,7 +65,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── Middleware ────────────────────────────────────────────────────────────
+    # ── Security & CORS Middleware ────────────────────────────────────────────
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
@@ -68,6 +75,28 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # ── Global Exception Handler ──────────────────────────────────────────────
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        logger.error("Unhandled Exception", path=request.url.path, error=str(exc), exc_info=True)
+        if settings.is_production:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": "An internal error occurred. Please try again later.",
+                    "data": None,
+                },
+            )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"Internal Server Error: {str(exc)}",
+                "data": None,
+            },
+        )
 
     # ── Core Routes ───────────────────────────────────────────────────────────
     app.include_router(core_v1_router)
@@ -77,6 +106,7 @@ def create_app() -> FastAPI:
 
     logger.info("Application factory complete")
     return app
+
 
 
 app = create_app()

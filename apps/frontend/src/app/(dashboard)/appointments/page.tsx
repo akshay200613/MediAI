@@ -48,7 +48,7 @@ export default function AppointmentsPage() {
           <h1 className="text-2xl font-bold text-white">Appointments</h1>
           <p className="text-slate-400 mt-1">{total} appointments</p>
         </div>
-        <Link href="/appointments/new" className="btn-primary"><Plus className="w-4 h-4" /> Book Appointment</Link>
+        <Link href="/patient/book" className="btn-primary"><Plus className="w-4 h-4" /> Book Appointment</Link>
       </div>
 
       {/* Filter tabs */}
@@ -67,7 +67,7 @@ export default function AppointmentsPage() {
         <div className="glass-card flex flex-col items-center justify-center py-20 text-slate-500">
           <Calendar className="w-12 h-12 mb-3 opacity-30" />
           <p className="font-medium">No appointments found</p>
-          <Link href="/appointments/new" className="btn-primary mt-4"><Plus className="w-4 h-4" /> Book Appointment</Link>
+          <Link href="/patient/book" className="btn-primary mt-4"><Plus className="w-4 h-4" /> Book Appointment</Link>
         </div>
       ) : (
         <div className="space-y-3">

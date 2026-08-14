@@ -44,7 +44,7 @@ export default function PatientDetailPage({ params }: { params: Promise<{ id: st
           <Link href={`/ai-chat?patient_id=${patient.id}`} className="btn-secondary py-2 px-4 text-sm">
             <Bot className="w-4 h-4" /> AI Consult
           </Link>
-          <Link href={`/appointments/new?patient_id=${patient.id}`} className="btn-secondary py-2 px-4 text-sm">
+          <Link href={`/patient/book?patient_id=${patient.id}`} className="btn-secondary py-2 px-4 text-sm">
             <Calendar className="w-4 h-4" /> Book Appointment
           </Link>
         </div>

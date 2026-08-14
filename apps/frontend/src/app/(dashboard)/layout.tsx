@@ -35,21 +35,45 @@ interface NavItem {
   subItems?: { href: string; label: string; icon: typeof Users }[]
 }
 
-const navItems: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/ai-chat', label: 'AI Chat', icon: MessageSquare },
-  {
-    href: '/health-records',
-    label: 'Health Records',
-    icon: FileText,
-    subItems: [
-      { href: '/patients', label: 'Patients', icon: Users },
-      { href: '/doctors', label: 'Doctors', icon: Stethoscope },
-    ],
-  },
-  { href: '/appointments', label: 'Appointments', icon: Calendar },
-  { href: '/settings', label: 'Settings', icon: Settings },
-]
+const getRoleNavItems = (role?: string): NavItem[] => {
+  if (role === 'admin' || role === 'super_admin') {
+    return [
+      { href: '/admin', label: 'Admin Dashboard', icon: LayoutDashboard },
+      { href: '/admin/doctors', label: 'Manage Doctors', icon: Stethoscope },
+      { href: '/admin/patients', label: 'Manage Patients', icon: Users },
+      { href: '/admin/appointments', label: 'Master Appointments', icon: Calendar },
+      { href: '/admin/audit-logs', label: 'Audit Trail', icon: ShieldCheck },
+      { href: '/settings', label: 'Account Settings', icon: Settings },
+    ]
+  }
+  if (role === 'doctor') {
+    return [
+      { href: '/doctor', label: 'Doctor Console', icon: LayoutDashboard },
+      { href: '/doctor/appointments', label: 'Patient Roster & Notes', icon: Calendar },
+      { href: '/settings', label: 'Account & Schedule Settings', icon: Settings },
+      { href: '/ai-chat', label: 'Clinical AI RAG', icon: MessageSquare },
+    ]
+  }
+  if (role === 'patient' || role === 'user') {
+    return [
+      { href: '/patient', label: 'Patient Portal', icon: LayoutDashboard },
+      { href: '/patient/book', label: 'Book Appointment', icon: Calendar },
+      { href: '/patient/appointments', label: 'My Appointments', icon: Calendar },
+      { href: '/patient/profile', label: 'Medical Profile', icon: FileText },
+      { href: '/patient/chat', label: 'AI Medical Chat', icon: MessageSquare },
+      { href: '/settings', label: 'Account Settings', icon: Settings },
+    ]
+  }
+
+  // Fallback platform nav
+  return [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/ai-chat', label: 'AI Chat', icon: MessageSquare },
+    { href: '/appointments', label: 'Appointments', icon: Calendar },
+    { href: '/settings', label: 'Settings', icon: Settings },
+  ]
+}
+
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user, logout } = useAuth()
@@ -65,8 +89,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isFullHeightPage = pathname === '/ai-chat'
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) router.replace('/login')
-  }, [isAuthenticated, isLoading, router])
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        router.replace('/login')
+        return
+      }
+
+      const role = user?.role
+      const isVerified = user?.is_verified !== false
+
+      if (pathname.startsWith('/admin') && role !== 'admin' && role !== 'super_admin') {
+        router.replace('/unauthorized')
+      } else if (pathname.startsWith('/doctor')) {
+        if (role !== 'doctor' && role !== 'admin' && role !== 'super_admin') {
+          if (!isVerified) {
+            router.replace('/pending-approval')
+          } else {
+            router.replace('/unauthorized')
+          }
+        }
+      } else if (
+        pathname.startsWith('/patient') &&
+        role !== 'patient' &&
+        role !== 'user' &&
+        role !== 'admin' &&
+        role !== 'doctor'
+      ) {
+        router.replace('/unauthorized')
+      }
+    }
+  }, [isAuthenticated, isLoading, user, pathname, router])
 
   useEffect(() => {
     const stored = localStorage.getItem('sidebar_collapsed')
@@ -135,7 +187,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </p>
           )}
 
-          {navItems.map((item) => {
+          {getRoleNavItems(user?.role).map((item) => {
             const Icon = item.icon
             const isSubActive = item.subItems?.some((sub) => pathname.startsWith(sub.href))
             const isActive =

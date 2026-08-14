@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 7
 
+    # ── Admin Bootstrap ──────────────────────────────────────────────────────
+    admin_email: str = ""
+    admin_password: str = ""
+    admin_full_name: str = "MediAI Admin"
+
     # ── Google AI / Gemini ────────────────────────────────────────────────────
     google_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
@@ -84,7 +89,7 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 512
     rag_chunk_overlap: int = 64
     rag_top_k: int = 5
-    rag_score_threshold: float = 0.7
+    rag_score_threshold: float = 0.35
 
     # ── Computed ─────────────────────────────────────────────────────────────
     @computed_field  # type: ignore[prop-decorator]

@@ -52,9 +52,9 @@ class HybridRetriever:
         bm25_retriever: BM25Retriever,
         llm_client: BaseLLMClient,
         *,
-        dense_top_k: int = 10,
-        sparse_top_k: int = 10,
-        fusion_top_k: int = 10,
+        dense_top_k: int = 15,
+        sparse_top_k: int = 15,
+        fusion_top_k: int = 15,
         rerank_top_k: int = 5,
         rrf_k: int = 60,
         enable_reranking: bool = True,
@@ -171,8 +171,8 @@ class HybridRetriever:
             ],
             k=self.rrf_k,
             top_k=self.fusion_top_k,
-            dense_weight=0.65,
-            sparse_weight=0.35
+            dense_weight=0.70,
+            sparse_weight=0.30,
         )
 
         logger.debug(

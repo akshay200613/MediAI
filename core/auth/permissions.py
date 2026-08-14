@@ -81,9 +81,19 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
     },
     "patient": {
         Permission.USE_AI_CHAT,
+        Permission.VIEW_APPOINTMENT,
+        Permission.CREATE_APPOINTMENT,
+        Permission.UPDATE_APPOINTMENT,
+        Permission.VIEW_PATIENT,
+        Permission.UPDATE_PATIENT,
     },
     "user": {
         Permission.USE_AI_CHAT,
+        Permission.VIEW_APPOINTMENT,
+        Permission.CREATE_APPOINTMENT,
+        Permission.UPDATE_APPOINTMENT,
+        Permission.VIEW_PATIENT,
+        Permission.UPDATE_PATIENT,
     },
 }
 
