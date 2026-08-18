@@ -154,13 +154,12 @@ class SupervisorAgent:
 
         content = content.strip()
 
-        if content.startswith("```"):
-            lines = content.splitlines()
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            content = "\n".join(lines).strip()
+        # Robustly extract JSON block by finding the first '{' and last '}'
+        start_idx = content.find("{")
+        end_idx = content.rfind("}")
+        
+        if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
+            content = content[start_idx:end_idx + 1]
 
         try:
             data = json.loads(content)

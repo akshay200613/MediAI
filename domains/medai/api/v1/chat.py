@@ -157,10 +157,13 @@ async def chat(
     session: AsyncSession = Depends(get_db),
 ) -> DataResponse[ChatResponse]:
     session_id = message.session_id or str(uuid.uuid4())
-    session_mgr = SessionManager()
+    session_mgr = SessionManager(session)
 
-    # Load conversation history
+    # Load conversation history for current session
     history = await session_mgr.get_last_n_messages(current_user.user_id, session_id, n=10)
+    
+    # Load cross-session memory for the patient
+    long_term_memory = await session_mgr.get_recent_history_cross_session(current_user.user_id, n=20)
 
     # Extract and update patient details if user is patient
     updated_fields = {}
@@ -203,6 +206,12 @@ async def chat(
 
     # Map history to Langchain messages
     langchain_messages = []
+    
+    # Inject long-term memory summary as a system message
+    if long_term_memory:
+        memory_str = "\n".join([f"{m.role}: {m.content}" for m in long_term_memory])
+        langchain_messages.append(SystemMessage(content=f"[System Note: Patient's recent conversation history across past sessions (Long-Term Memory):\n{memory_str}\n]"))
+        
     for msg in history:
         if msg.role == "user":
             langchain_messages.append(HumanMessage(content=msg.content))
@@ -279,7 +288,67 @@ async def chat(
 async def clear_session(
     session_id: str,
     current_user: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
 ) -> None:
     """Clear the conversation history for a session."""
-    session_mgr = SessionManager()
+    session_mgr = SessionManager(session)
     await session_mgr.clear(current_user.user_id, session_id)
+
+
+@router.get(
+    "/sessions",
+    summary="Get patient chat sessions",
+)
+async def get_sessions(
+    current_user: CurrentUser = Depends(require_permission(Permission.USE_AI_CHAT)),
+    session: AsyncSession = Depends(get_db),
+):
+    """Retrieve all chat sessions for the current patient."""
+    from domains.medai.models.chat_history import ChatSession
+    
+    stmt = (
+        select(ChatSession)
+        .where(ChatSession.user_id == current_user.user_id)
+        .order_by(ChatSession.updated_at.desc())
+    )
+    result = await session.execute(stmt)
+    sessions = result.scalars().all()
+    
+    return DataResponse(
+        data=[{"id": s.id, "title": s.title, "updated_at": s.updated_at} for s in sessions],
+        message="Fetched chat sessions successfully",
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/messages",
+    summary="Get messages for a chat session",
+)
+async def get_session_messages(
+    session_id: str,
+    current_user: CurrentUser = Depends(require_permission(Permission.USE_AI_CHAT)),
+    session: AsyncSession = Depends(get_db),
+):
+    """Retrieve all messages for a specific session."""
+    from domains.medai.models.chat_history import ChatSession, ChatMessage
+    
+    # Verify session belongs to user
+    stmt_sess = select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == current_user.user_id)
+    result_sess = await session.execute(stmt_sess)
+    chat_session = result_sess.scalar_one_or_none()
+    
+    if not chat_session:
+        return DataResponse(success=False, message="Session not found or unauthorized", data=[])
+        
+    stmt_msg = (
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.asc())
+    )
+    result_msg = await session.execute(stmt_msg)
+    messages = result_msg.scalars().all()
+    
+    return DataResponse(
+        data=[{"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at} for m in messages],
+        message="Fetched messages successfully",
+    )
