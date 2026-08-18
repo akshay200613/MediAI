@@ -19,10 +19,8 @@ from core.auth.dependencies import get_current_user, CurrentUser
 from core.auth.permissions import require_permission, Permission
 from core.schemas.base import DataResponse
 from domains.medai.schemas.chat import ChatMessage, ChatResponse
-from domains.medai.ai.agents.medical_agent import MedicalAgent
 from core.ai.llm.gemini_client import get_llm_client
 from core.ai.conversation.session_manager import SessionManager
-from core.ai.agents.base_agent import AgentContext
 from core.ai.llm.client import Message
 from core.models.user import User
 from domains.medai.models.patient import Patient
@@ -162,7 +160,7 @@ async def chat(
     session_mgr = SessionManager()
 
     # Load conversation history
-    history = await session_mgr.get_last_n_messages(session_id, n=10)
+    history = await session_mgr.get_last_n_messages(current_user.user_id, session_id, n=10)
 
     # Extract and update patient details if user is patient
     updated_fields = {}
@@ -200,35 +198,74 @@ async def chat(
             if not pat.emergency_contact_phone:
                 missing_fields.append("Emergency Contact Phone")
 
-    # Build agent context
-    context = AgentContext(
-        session_id=session_id,
-        user_id=current_user.user_id,
-        domain="medai",
-        messages=history + [Message(role="user", content=message.content)],
-        metadata={
+    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+    from core.ai.graph.builder import build_medai_graph
+
+    # Map history to Langchain messages
+    langchain_messages = []
+    for msg in history:
+        if msg.role == "user":
+            langchain_messages.append(HumanMessage(content=msg.content))
+        else:
+            langchain_messages.append(AIMessage(content=msg.content))
+            
+    # Inject missing fields instruction as a system message if needed
+    if missing_fields:
+        missing_str = ", ".join(missing_fields)
+        langchain_messages.append(SystemMessage(content=f"[System Note: Patient profile is missing {missing_str}. Please politely ask for these details.]"))
+
+    langchain_messages.append(HumanMessage(content=message.content))
+
+    patient_context = {}
+    if pat:
+        patient_context = {
+            "first_name": pat.first_name,
+            "last_name": pat.last_name,
+            "email": pat.email,
+            "phone": pat.phone,
+            "date_of_birth": pat.date_of_birth.isoformat() if pat.date_of_birth else None,
+            "gender": pat.gender,
+            "blood_group": pat.blood_group,
+            "address": pat.address,
+        }
+
+    graph = build_medai_graph()
+    state = {
+        "messages": langchain_messages,
+        "user_id": current_user.user_id,
+        "session_id": session_id,
+        "patient_context": patient_context,
+        "metadata": {
             "patient_id": message.patient_id,
             "use_rag": message.use_rag,
             "updated_fields": updated_fields,
             "missing_fields": missing_fields,
             "patient_name": patient_name,
-        },
-    )
-
-    # Run Medical AI Agent
-    agent = MedicalAgent(llm_client=get_llm_client())
-    response = await agent.invoke(context)
+        }
+    }
+    
+    config = {"configurable": {"thread_id": session_id}}
+    result = await graph.ainvoke(state, config=config)
+    
+    final_response_text = result.get("final_response")
+    if not final_response_text and result.get("messages"):
+        final_response_text = result["messages"][-1].content
+    
+    # Safely handle tool calls extraction from the last AIMessage if present
+    tool_calls = []
+    if result.get("messages") and hasattr(result["messages"][-1], "tool_calls"):
+        tool_calls = result["messages"][-1].tool_calls
 
     # Persist exchange
-    await session_mgr.add_exchange(session_id, message.content, response.content)
+    await session_mgr.add_exchange(current_user.user_id, session_id, message.content, final_response_text)
 
     return DataResponse(
         data=ChatResponse(
-            content=response.content,
+            content=final_response_text,
             session_id=session_id,
-            sources=response.sources,
-            agent_name=response.agent_name,
-            tool_calls=response.tool_calls,
+            sources=[],
+            agent_name=result.get("current_agent", "supervisor"),
+            tool_calls=tool_calls,
         ),
         message="Response generated",
     )
@@ -245,4 +282,4 @@ async def clear_session(
 ) -> None:
     """Clear the conversation history for a session."""
     session_mgr = SessionManager()
-    await session_mgr.clear(session_id)
+    await session_mgr.clear(current_user.user_id, session_id)

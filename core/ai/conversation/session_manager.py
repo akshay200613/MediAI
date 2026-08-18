@@ -16,12 +16,15 @@ SESSION_TTL = 86400  # 24 hours
 
 
 class SessionManager:
-    """Manages chat session history in Redis."""
+    """Manages chat session history in Redis, isolated per user."""
 
-    async def get_last_n_messages(self, session_id: str, *, n: int = 10) -> list[Message]:
-        """Retrieve the last N messages from a session."""
+    def _get_key(self, user_id: str, session_id: str) -> str:
+        return f"{SESSION_PREFIX}user:{user_id}:session:{session_id}"
+
+    async def get_last_n_messages(self, user_id: str, session_id: str, *, n: int = 10) -> list[Message]:
+        """Retrieve the last N messages from a user's session."""
         redis = get_redis()
-        key = f"{SESSION_PREFIX}{session_id}"
+        key = self._get_key(user_id, session_id)
         try:
             raw_messages = await redis.lrange(key, -n, -1)
             messages = []
@@ -30,13 +33,13 @@ class SessionManager:
                 messages.append(Message(role=data["role"], content=data["content"]))
             return messages
         except Exception as e:
-            logger.warning("Failed to retrieve session history", session_id=session_id, error=str(e))
+            logger.warning("Failed to retrieve session history", session_id=session_id, user_id=user_id, error=str(e))
             return []
 
-    async def add_exchange(self, session_id: str, user_message: str, assistant_message: str) -> None:
+    async def add_exchange(self, user_id: str, session_id: str, user_message: str, assistant_message: str) -> None:
         """Persist a user/assistant exchange to the session."""
         redis = get_redis()
-        key = f"{SESSION_PREFIX}{session_id}"
+        key = self._get_key(user_id, session_id)
         try:
             await redis.rpush(
                 key,
@@ -45,13 +48,13 @@ class SessionManager:
             )
             await redis.expire(key, SESSION_TTL)
         except Exception as e:
-            logger.warning("Failed to persist exchange", session_id=session_id, error=str(e))
+            logger.warning("Failed to persist exchange", session_id=session_id, user_id=user_id, error=str(e))
 
-    async def clear(self, session_id: str) -> None:
+    async def clear(self, user_id: str, session_id: str) -> None:
         """Clear all messages for a session."""
         redis = get_redis()
-        key = f"{SESSION_PREFIX}{session_id}"
+        key = self._get_key(user_id, session_id)
         try:
             await redis.delete(key)
         except Exception as e:
-            logger.warning("Failed to clear session", session_id=session_id, error=str(e))
+            logger.warning("Failed to clear session", session_id=session_id, user_id=user_id, error=str(e))

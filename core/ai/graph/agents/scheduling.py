@@ -39,6 +39,12 @@ Your role is to help patients and staff with appointment management:
 - Check doctor availability
 - Show upcoming appointments
 
+CRITICAL RULE:
+You MUST NOT call the `book_appointment` tool if the preferred date and time are not specified by the user. Do not guess or assume a date and time. If the date and/or time is missing, you must:
+1. Check the doctor's availability first using `get_doctor_availability` to find suitable slots.
+2. Ask the user politely to specify their preferred date and time.
+3. Only proceed with booking once they provide a specific date and time.
+
 When handling appointment requests:
 1. Confirm all required details before booking:
    - Patient identity (name or ID)
@@ -131,12 +137,36 @@ class SchedulingAgent:
             # We want patient and appointment tools
             all_tools = await mcp_server.get_tools()
             
+            # Check if we have a date/time indicator in the query or conversation history
+            has_date_time = False
+            search_text = message.lower()
+            if conversation_history:
+                search_text += " " + " ".join([
+                    m.content.lower() for m in conversation_history 
+                    if hasattr(m, 'content') and isinstance(m.content, str)
+                ])
+            
+            import re
+            date_time_indicators = [
+                r"\b\d{4}-\d{2}-\d{2}\b",  # YYYY-MM-DD
+                r"\b\d{1,2}:\d{2}\b",      # HH:MM
+                r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+                r"\b(tomorrow|today|next week|morning|afternoon|pm|am)\b",
+                r"\b\d{1,2}(st|nd|rd|th)\b",  # 1st, 2nd, etc.
+                r"\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\b"
+            ]
+            if any(re.search(pattern, search_text) for pattern in date_time_indicators):
+                has_date_time = True
+
             # Filter tools meant for scheduling
             scheduling_tool_names = {
                 "get_patient_profile", "search_patients", "get_patient_history",
-                "list_appointments", "book_appointment", "cancel_appointment", 
+                "list_appointments", "cancel_appointment", 
                 "get_doctor_availability"
             }
+            if has_date_time:
+                scheduling_tool_names.add("book_appointment")
+                
             tools = [t for t in all_tools if t.name in scheduling_tool_names]
 
             llm_with_tools = self.llm.bind_tools(tools)

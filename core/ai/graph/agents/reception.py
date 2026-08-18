@@ -150,11 +150,15 @@ class ReceptionAgent:
             content = "\n".join(lines).strip()
 
         try:
-            data = json.loads(content)
-        except json.JSONDecodeError:
+            from langchain_core.utils.json import parse_partial_json
+            data = parse_partial_json(content)
+            if not isinstance(data, dict):
+                data = {}
+        except Exception as e:
             logger.warning(
                 "Failed to parse reception response as JSON",
                 content=content[:200],
+                error=str(e),
             )
             return {
                 "intent": "general",
