@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 
 from core.database.session import get_db
 from core.auth.dependencies import get_current_user, CurrentUser
@@ -269,6 +270,128 @@ async def chat(
         ),
         message="Response generated",
     )
+
+
+@router.post(
+    "/stream",
+    response_class=StreamingResponse,
+    summary="Stream Chat with Medical AI Agent",
+)
+async def chat_stream(
+    message: ChatMessage,
+    current_user: CurrentUser = Depends(require_permission(Permission.USE_AI_CHAT)),
+    session: AsyncSession = Depends(get_db),
+):
+    session_id = message.session_id or str(uuid.uuid4())
+    session_mgr = SessionManager()
+
+    # Load conversation history
+    history = await session_mgr.get_last_n_messages(current_user.user_id, session_id, n=10)
+
+    # Extract and update patient details if user is patient
+    updated_fields = {}
+    missing_fields = []
+    patient_name = current_user.full_name
+
+    if current_user.role in ("patient", "user"):
+        updated_fields = await extract_and_update_patient(
+            user_message=message.content,
+            user_id=current_user.user_id,
+            email=current_user.email,
+            session=session,
+        )
+        
+        # Check missing fields
+        pat_res = await session.execute(
+            select(Patient).where(
+                (Patient.email == current_user.email) | (Patient.user_id == str(current_user.user_id)),
+                Patient.is_deleted == False
+            )
+        )
+        pat = pat_res.scalar_one_or_none()
+        if pat:
+            patient_name = pat.full_name
+            if not pat.date_of_birth:
+                missing_fields.append("Date of Birth")
+            if not pat.gender:
+                missing_fields.append("Gender")
+            if not pat.blood_group:
+                missing_fields.append("Blood Group")
+            if not pat.address:
+                missing_fields.append("Street Address")
+            if not pat.emergency_contact_name:
+                missing_fields.append("Emergency Contact Name")
+            if not pat.emergency_contact_phone:
+                missing_fields.append("Emergency Contact Phone")
+
+    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+    from core.ai.graph.builder import build_medai_graph
+
+    # Map history to Langchain messages
+    langchain_messages = []
+    for msg in history:
+        if msg.role == "user":
+            langchain_messages.append(HumanMessage(content=msg.content))
+        else:
+            langchain_messages.append(AIMessage(content=msg.content))
+            
+    if missing_fields:
+        missing_str = ", ".join(missing_fields)
+        langchain_messages.append(SystemMessage(content=f"[System Note: Patient profile is missing {missing_str}. Please politely ask for these details.]"))
+
+    langchain_messages.append(HumanMessage(content=message.content))
+
+    patient_context = {}
+    if pat:
+        patient_context = {
+            "first_name": pat.first_name,
+            "last_name": pat.last_name,
+            "email": pat.email,
+            "phone": pat.phone,
+            "date_of_birth": pat.date_of_birth.isoformat() if pat.date_of_birth else None,
+            "gender": pat.gender,
+            "blood_group": pat.blood_group,
+            "address": pat.address,
+        }
+
+    graph = build_medai_graph()
+    state = {
+        "messages": langchain_messages,
+        "user_id": current_user.user_id,
+        "session_id": session_id,
+        "patient_context": patient_context,
+        "metadata": {
+            "patient_id": message.patient_id,
+            "use_rag": message.use_rag,
+            "updated_fields": updated_fields,
+            "missing_fields": missing_fields,
+            "patient_name": patient_name,
+        }
+    }
+    
+    config = {"configurable": {"thread_id": session_id}}
+
+    async def event_generator():
+        final_content = ""
+        try:
+            async for event in graph.astream_events(state, config=config, version="v2"):
+                if event["event"] == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    if chunk.content:
+                        content_str = str(chunk.content)
+                        final_content += content_str
+                        yield f"data: {json.dumps({'content': content_str})}\n\n"
+            
+            # Persist after generation completes
+            await session_mgr.add_exchange(current_user.user_id, session_id, message.content, final_content)
+        except asyncio.CancelledError:
+            # Client disconnected
+            pass
+        except Exception as e:
+            logger.error(f"Error during streaming: {e}")
+            yield f"data: {json.dumps({'error': 'An error occurred during generation'})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.delete(

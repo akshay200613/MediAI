@@ -99,19 +99,19 @@ export const ChatSidebar: React.FC = () => {
             animate={{ width: 280, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="h-full bg-slate-900/95 border-r border-slate-800/80 flex flex-col shrink-0 z-20 overflow-hidden text-slate-300 font-sans"
+            className="h-full bg-primary-medium/80 backdrop-blur-lg border-r border-primary-light/20 flex flex-col shrink-0 z-20 overflow-hidden text-text-light font-sans"
           >
             {/* Header */}
-            <div className="p-3.5 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-3.5 border-b border-primary-light/20 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400">
+                <div className="w-7 h-7 rounded-lg bg-accent-gold/10 border border-accent-gold/30 flex items-center justify-center text-accent-gold">
                   <Stethoscope className="w-4 h-4" />
                 </div>
-                <span className="font-semibold text-sm text-slate-100 tracking-tight">Clinical Assistant</span>
+                <span className="font-semibold text-sm text-accent-gold tracking-tight">Clinical Assistant</span>
               </div>
               <button
                 onClick={toggleSidebar}
-                className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                className="hidden lg:flex p-1.5 rounded-lg text-text-medium hover:text-text-light hover:bg-primary-light/20 transition-colors"
                 title="Collapse sidebar"
               >
                 <PanelLeftClose className="w-4 h-4" />
@@ -119,28 +119,28 @@ export const ChatSidebar: React.FC = () => {
             </div>
 
             {/* Actions: New Chat & Search */}
-            <div className="p-3 space-y-2 border-b border-slate-800/60">
+            <div className="p-3 space-y-2 border-b border-primary-light/20">
               <button
                 onClick={() => createSession()}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-medium text-xs shadow-md shadow-teal-900/20 transition-colors"
+                className="w-full flex items-center justify-between px-6 py-3 rounded-full bg-accent-gold hover:bg-accent-light text-primary-dark font-semibold text-xs shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
               >
                 <span className="flex items-center gap-2">
                   <Plus className="w-4 h-4" />
                   New Consultation
                 </span>
-                <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-teal-700/60 rounded text-teal-100">
+                <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-primary-dark/20 rounded text-primary-dark/80">
                   Ctrl+N
                 </kbd>
               </button>
 
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-text-medium absolute left-2.5 top-3" />
                 <input
                   type="text"
                   placeholder="Search consultations..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-slate-950/60 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500/50"
+                  className="w-full pl-8 pr-3 py-2.5 bg-primary-dark/50 border border-primary-light/30 rounded-xl text-xs text-text-light placeholder-text-medium focus:outline-none focus:ring-2 focus:ring-accent-gold/50 focus:border-accent-light transition-all"
                 />
               </div>
             </div>
@@ -152,7 +152,7 @@ export const ChatSidebar: React.FC = () => {
 
                 return (
                   <div key={groupTitle} className="space-y-1">
-                    <h4 className="px-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                    <h4 className="px-2 text-[10px] font-semibold text-text-medium uppercase tracking-wider">
                       {groupTitle}
                     </h4>
                     <div className="space-y-0.5">
@@ -166,13 +166,13 @@ export const ChatSidebar: React.FC = () => {
                             onClick={() => selectSession(session.id)}
                             className={`group relative flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
                               isActive
-                                ? 'bg-slate-800 text-teal-300 font-medium border border-slate-700/60'
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                                ? 'bg-primary-light/30 text-accent-light font-medium border border-primary-light/50'
+                                : 'text-text-medium hover:text-text-light hover:bg-primary-light/20'
                             }`}
                           >
                             <div className="flex items-center gap-2 min-w-0 flex-1 pr-1">
                               <MessageSquare
-                                className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-teal-400' : 'text-slate-500'}`}
+                                className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-accent-gold' : 'text-text-medium'}`}
                               />
                               {isEditing ? (
                                 <form

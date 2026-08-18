@@ -7,48 +7,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        border: 'rgba(30, 41, 59, 0.8)',
-        /* Brand – Teal primary */
-        primary: {
-          50:  '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
-        },
-        /* Accent – Cyan/Sky */
-        accent: {
-          300: '#67e8f9',
-          400: '#22d3ee',
-          500: '#06b6d4',
-          600: '#0891b2',
-        },
-        /* Dark surfaces */
-        surface: {
-          900: '#0a0f1e',
-          800: '#0d1526',
-          700: '#111827',
-          600: '#1a2332',
-          500: '#1f2d3d',
-          400: '#2a3a50',
-        },
-        /* Amber callouts */
-        callout: {
-          amber:  '#f59e0b',
-          'amber-bg': 'rgba(245, 158, 11, 0.08)',
-          'amber-border': 'rgba(245, 158, 11, 0.25)',
-          red: '#ef4444',
-          'red-bg': 'rgba(239, 68, 68, 0.08)',
-          'red-border': 'rgba(239, 68, 68, 0.25)',
-        },
+        'primary-dark': '#1A0A2A',
+        'primary-medium': '#381E57',
+        'primary-light': '#572F8B',
+        'accent-gold': '#D4AF37',
+        'accent-light': '#FFD700',
+        'text-light': '#E0E0E0',
+        'text-medium': '#B0B0B0',
+        'text-dark': '#808080',
+        success: '#34C759',
+        warning: '#FF9500',
+        'warning-dark': '#CC7700',
+        error: '#FF453A',
+        info: '#0A84FF',
+        'info-dark': '#0765C7',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        manrope: ['var(--font-manrope)', 'sans-serif'],
+        inter: ['var(--font-inter)', 'sans-serif'],
+        poppins: ['var(--font-poppins)', 'sans-serif'],
+      },
+      boxShadow: {
+        '3xl': '0 35px 60px -15px rgba(0, 0, 0, 0.3)',
       },
     },
   },

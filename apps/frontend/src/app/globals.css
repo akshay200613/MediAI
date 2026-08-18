@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,29 +6,27 @@
 
 @layer base {
   :root {
-    --bg-primary: #0a0f1e;
-    --bg-secondary: #0d1526;
-    --bg-card: rgba(17, 24, 39, 0.8);
-    --border-color: rgba(20, 184, 166, 0.15);
-    --text-primary: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --accent-teal: #14b8a6;
-    --accent-cyan: #06b6d4;
+    --bg-primary: #1A0A2A;
+    --bg-secondary: #381E57;
+    --bg-card: rgba(56, 30, 87, 0.8);
+    --border-color: rgba(87, 47, 139, 0.2);
+    --text-primary: #E0E0E0;
+    --text-secondary: #B0B0B0;
+    --accent-gold: #D4AF37;
+    --accent-light: #FFD700;
   }
 
   * {
-    border-color: rgba(30, 41, 59, 0.8);
+    border-color: rgba(87, 47, 139, 0.3);
     box-sizing: border-box;
   }
 
   body {
-    background-color: #0a0f1e;
-    color: #f1f5f9;
+    background-color: #1A0A2A;
+    color: #E0E0E0;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
-    background-image:
-      radial-gradient(ellipse at 20% 50%, rgba(20, 184, 166, 0.04) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 20%, rgba(6, 182, 212, 0.04) 0%, transparent 50%);
+    background-image: linear-gradient(to bottom right, #1A0A2A, #381E57, #1A0A2A);
     min-height: 100vh;
   }
 
@@ -38,9 +36,9 @@
 
   /* Custom scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #0d1526; }
-  ::-webkit-scrollbar-thumb { background: #2a3a50; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #14b8a6; }
+  ::-webkit-scrollbar-track { background: #381E57; }
+  ::-webkit-scrollbar-thumb { background: #D4AF37; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #FFD700; }
 
   /* Tabular numerals for stat displays */
   .tabular-nums {
@@ -107,24 +105,24 @@
   /* ── Secondary button ───────────────────────────── */
   .btn-secondary {
     @apply flex items-center justify-center gap-2
-           bg-surface-600/60 hover:bg-surface-500/60
-           border border-white/10 hover:border-white/20
-           text-slate-300 hover:text-white font-medium px-6 py-3 rounded-xl
+           bg-primary-medium/60 hover:bg-primary-medium/80
+           border border-primary-light/20 hover:border-primary-light/40
+           text-text-medium hover:text-text-light font-medium px-6 py-3 rounded-xl
            transition-all duration-200;
   }
 
   /* ── Outlined button (Google auth, etc.) ─────────── */
   .btn-outlined {
     @apply flex items-center justify-center gap-3
-           bg-transparent border border-slate-300 hover:border-primary-400
-           text-slate-600 hover:text-primary-700 font-medium px-6 rounded-xl
+           bg-transparent border border-slate-300 hover:border-accent-gold
+           text-slate-600 hover:text-accent-gold font-medium px-6 rounded-xl
            transition-all duration-200;
     height: 48px;
   }
   .btn-outlined-dark {
     @apply flex items-center justify-center gap-3
-           bg-transparent border border-white/15 hover:border-primary-400/50
-           text-slate-300 hover:text-white font-medium px-6 rounded-xl
+           bg-transparent border border-primary-light/30 hover:border-accent-gold/50
+           text-text-medium hover:text-accent-gold font-medium px-6 rounded-xl
            transition-all duration-200;
     height: 48px;
   }
@@ -141,9 +139,9 @@
   /* ── Pill button ────────────────────────────────── */
   .btn-pill {
     @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium
-           bg-surface-600/60 border border-white/10
-           text-slate-300 hover:text-white hover:border-primary-500/30
-           hover:bg-primary-500/10
+           bg-primary-medium/60 border border-primary-light/20
+           text-text-medium hover:text-text-light hover:border-accent-gold/30
+           hover:bg-primary-light/20
            transition-all duration-200;
   }
 
@@ -151,7 +149,7 @@
   .badge {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
-  .badge-blue   { @apply badge bg-primary-500/20 text-primary-300 border border-primary-500/30; }
+  .badge-blue   { @apply badge bg-primary-light/20 text-accent-light border border-primary-light/30; }
   .badge-green  { @apply badge bg-emerald-500/20 text-emerald-300 border border-emerald-500/30; }
   .badge-yellow { @apply badge bg-amber-500/20 text-amber-300 border border-amber-500/30; }
   .badge-red    { @apply badge bg-red-500/20 text-red-300 border border-red-500/30; }
@@ -174,13 +172,13 @@
   /* ── Sidebar nav item ───────────────────────────── */
   .nav-item {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-           text-slate-400 hover:text-white hover:bg-white/5
+           text-text-medium hover:text-text-light hover:bg-primary-light/20
            transition-all duration-200 cursor-pointer
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-800;
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold focus-visible:ring-offset-2 focus-visible:ring-offset-primary-dark;
   }
   .nav-item.active {
-    @apply bg-primary-500/15 text-primary-400;
-    box-shadow: inset 3px 0 0 0 #14b8a6;
+    @apply bg-primary-light/30 text-accent-light;
+    box-shadow: inset 3px 0 0 0 #D4AF37;
   }
 
   /* ── Page header ────────────────────────────────── */
@@ -210,7 +208,7 @@
   /* ── Typing cursor ──────────────────────────────── */
   .typing-cursor::after {
     content: '|';
-    @apply text-primary-400 animate-typing-cursor ml-0.5 font-light;
+    @apply text-accent-gold animate-typing-cursor ml-0.5 font-light;
   }
 
   /* ── Typing indicator (bounce dots) ─────────────── */
@@ -299,7 +297,7 @@
     z-index: -1;
   }
   .gradient-border-card > .inner {
-    @apply bg-surface-700 rounded-2xl;
+    @apply bg-primary-dark rounded-2xl;
   }
 
   /* ── Trust badge ────────────────────────────────── */
@@ -309,14 +307,14 @@
 
   /* ── Focus ring ─────────────────────────────────── */
   .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-900;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold focus-visible:ring-offset-2 focus-visible:ring-offset-primary-dark;
     transition: box-shadow 150ms ease;
   }
 }
 
 @layer utilities {
   .text-gradient {
-    @apply bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-accent-gold to-accent-light bg-clip-text text-transparent;
   }
-  .border-glow { border-color: rgba(20, 184, 166, 0.4); }
+  .border-glow { border-color: rgba(212, 175, 55, 0.4); }
 }

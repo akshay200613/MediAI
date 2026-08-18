@@ -61,14 +61,14 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, isGenerating, onDo
   }
 
   return (
-    <div className="p-3 sm:p-4 border-t border-slate-800/80 bg-slate-950/80 backdrop-blur-md relative z-10 font-sans">
+    <div className="p-3 sm:p-4 border-t border-primary-light/20 bg-primary-dark/80 backdrop-blur-md relative z-10 font-sans">
       {/* Upload Notification Chip */}
       {uploadNotice && (
-        <div className="max-w-3xl mx-auto mb-2 p-2 rounded-lg bg-slate-900 border border-teal-500/30 text-xs text-teal-300 flex items-center justify-between">
+        <div className="max-w-3xl mx-auto mb-2 p-2 rounded-lg bg-primary-medium border border-accent-gold/30 text-xs text-accent-gold flex items-center justify-between">
           <span className="truncate">{uploadNotice}</span>
           <button
             onClick={() => setUploadNotice(null)}
-            className="text-slate-400 hover:text-slate-200 text-xs pl-2"
+            className="text-text-medium hover:text-text-light text-xs pl-2"
           >
             Dismiss
           </button>
@@ -76,7 +76,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, isGenerating, onDo
       )}
 
       <form onSubmit={handleSubmit} className="max-w-3xl mx-auto relative">
-        <div className="flex items-end gap-2 p-2 rounded-2xl bg-slate-900 border border-slate-800 focus-within:border-teal-500/50 shadow-xl shadow-slate-950/50 transition-all">
+        <div className="flex items-center gap-2 p-2 rounded-full bg-primary-medium/50 backdrop-blur-xl border border-primary-light/30 focus-within:border-accent-light focus-within:ring-2 focus-within:ring-accent-gold/50 shadow-[0_8px_32px_rgb(0,0,0,0.2)] shadow-primary-dark/20 transition-all duration-300">
           {/* File Upload Affordance */}
           <input
             type="file"
@@ -89,11 +89,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, isGenerating, onDo
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading || isGenerating}
-            className="p-2 rounded-xl text-slate-400 hover:text-teal-300 hover:bg-slate-800 transition-colors shrink-0 disabled:opacity-50"
+            className="p-3 rounded-full text-accent-gold hover:text-primary-dark hover:bg-accent-gold/80 transition-all shrink-0 disabled:opacity-50"
             title="Upload document for RAG ingestion"
           >
             {isUploading ? (
-              <Loader2 className="w-5 h-5 animate-spin text-teal-400" />
+              <Loader2 className="w-5 h-5 animate-spin text-accent-light" />
             ) : (
               <UploadCloud className="w-5 h-5" />
             )}
@@ -106,15 +106,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, isGenerating, onDo
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask MediAI clinical assistant or query ingested documents..."
-            className="flex-1 bg-transparent text-xs sm:text-sm text-slate-100 placeholder-slate-500 resize-none focus:outline-none py-1.5 px-1 max-h-44 scrollbar-thin"
+            placeholder="Ask MediAI clinical assistant..."
+            className="flex-1 bg-transparent text-sm text-text-light placeholder-text-medium resize-none focus:outline-none py-2.5 px-2 max-h-44 scrollbar-thin self-center"
           />
 
           {/* Submit Action Button */}
           <button
             type="submit"
             disabled={!text.trim() || isGenerating}
-            className="p-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-medium shadow-md shadow-teal-900/20 transition-all shrink-0 disabled:opacity-40 disabled:hover:bg-teal-600 disabled:cursor-not-allowed"
+            className="p-3 rounded-full bg-gradient-to-r from-accent-gold to-accent-light hover:scale-[1.05] active:scale-95 text-primary-dark font-semibold shadow-lg transition-all shrink-0 disabled:opacity-40 disabled:from-primary-light disabled:to-primary-medium disabled:cursor-not-allowed"
             title="Send query (Enter)"
           >
             {isGenerating ? (

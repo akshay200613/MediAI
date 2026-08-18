@@ -129,7 +129,7 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
             >
               {/* Assistant Avatar */}
               {!isUser && (
-                <div className="w-8 h-8 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 shrink-0 mt-0.5">
+                <div className="w-8 h-8 rounded-xl bg-accent-gold/10 border border-accent-gold/30 flex items-center justify-center text-accent-gold shrink-0 mt-0.5">
                   <Stethoscope className="w-4 h-4" />
                 </div>
               )}
@@ -137,26 +137,26 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
               {/* Message Content Bubble */}
               <div className="flex flex-col min-w-0 max-w-2xl">
                 {/* Role Label & Timestamp */}
-                <div className={`flex items-center gap-2 mb-1 text-[11px] text-slate-400 ${isUser ? 'justify-end' : ''}`}>
-                  <span className="font-medium text-slate-300">
+                <div className={`flex items-center gap-2 mb-1 text-[11px] text-text-medium ${isUser ? 'justify-end' : ''}`}>
+                  <span className="font-medium text-text-light">
                     {isUser ? (userName || 'User') : 'MediAI Assistant'}
                   </span>
-                  <span className="text-slate-400 text-[10px]">
+                  <span className="text-text-medium text-[10px]">
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
 
                 {/* Bubble Body */}
                 <div
-                  className={`p-4 rounded-2xl ${
+                  className={`p-4 backdrop-blur-xl shadow-md ${
                     isUser
-                      ? 'bg-slate-800 border border-slate-700/80 text-slate-100 rounded-tr-sm'
-                      : 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-sm shadow-xl shadow-slate-950/40'
+                      ? 'bg-accent-gold text-primary-dark font-medium rounded-bl-xl rounded-tr-xl rounded-br-3xl'
+                      : 'bg-primary-light/20 text-text-light rounded-br-xl rounded-tl-xl rounded-bl-3xl'
                   } ${
                     msg.calloutType === 'red'
-                      ? 'border-l-4 border-l-rose-500'
+                      ? 'border-l-4 border-l-error'
                       : msg.calloutType === 'amber'
-                      ? 'border-l-4 border-l-amber-500'
+                      ? 'border-l-4 border-l-warning'
                       : ''
                   }`}
                 >
