@@ -135,7 +135,7 @@ class SchedulingAgent:
         try:
             # Get LangChain compatible tools from FastMCP server
             # We want patient and appointment tools
-            all_tools = await mcp_server.get_tools()
+            all_tools = await mcp_server.list_tools()
             
             # Check if we have a date/time indicator in the query or conversation history
             has_date_time = False
@@ -167,7 +167,7 @@ class SchedulingAgent:
             if has_date_time:
                 scheduling_tool_names.add("book_appointment")
                 
-            tools = [t for t in all_tools if t.name in scheduling_tool_names]
+            tools = [t.fn for t in all_tools if t.name in scheduling_tool_names and hasattr(t, "fn")]
 
             llm_with_tools = self.llm.bind_tools(tools)
 

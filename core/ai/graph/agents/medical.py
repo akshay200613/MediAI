@@ -123,14 +123,14 @@ class MedicalGraphAgent:
 
         try:
             # Get LangChain compatible tools from FastMCP server
-            all_tools = await mcp_server.get_tools()
+            all_tools = await mcp_server.list_tools()
             
             # Tools appropriate for the medical agent
             medical_tool_names = {
                 "get_patient_profile", "get_patient_history",
                 "query_knowledge_base"
             }
-            tools = [t for t in all_tools if t.name in medical_tool_names]
+            tools = [t.fn for t in all_tools if t.name in medical_tool_names and hasattr(t, "fn")]
 
             llm_with_tools = self.llm.bind_tools(tools)
 

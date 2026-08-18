@@ -285,7 +285,8 @@ async def mcp_tool_node(state: MedAIState) -> dict:
     """
     global _tool_node_instance
     if _tool_node_instance is None:
-        tools = await mcp_server.get_tools()
+        all_tools = await mcp_server.list_tools()
+        tools = [t.fn for t in all_tools if hasattr(t, "fn")]
         _tool_node_instance = ToolNode(tools)
     
     # ToolNode returns {"messages": [ToolMessage(...)]}

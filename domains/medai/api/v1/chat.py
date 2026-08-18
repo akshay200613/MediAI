@@ -258,12 +258,35 @@ async def chat(
     
     final_response_text = result.get("final_response")
     if not final_response_text and result.get("messages"):
-        final_response_text = result["messages"][-1].content
-    
+        content = result["messages"][-1].content
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, str):
+                    text_parts.append(part)
+                elif isinstance(part, dict) and "text" in part:
+                    text_parts.append(part["text"])
+            final_response_text = "\n".join(text_parts)
+        elif isinstance(content, str):
+            final_response_text = content
+        else:
+            final_response_text = str(content)
+            
+    if not isinstance(final_response_text, str):
+        final_response_text = str(final_response_text or "")
+        
     # Safely handle tool calls extraction from the last AIMessage if present
     tool_calls = []
     if result.get("messages") and hasattr(result["messages"][-1], "tool_calls"):
         tool_calls = result["messages"][-1].tool_calls
+        
+    final_response_text = final_response_text.strip()
+    if not final_response_text:
+        if tool_calls:
+            names = [tc.get("name", "action") for tc in tool_calls]
+            final_response_text = f"I am executing the following tasks: {', '.join(names)}."
+        else:
+            final_response_text = "I have processed your request."
 
     # Persist exchange
     await session_mgr.add_exchange(current_user.user_id, session_id, message.content, final_response_text)
