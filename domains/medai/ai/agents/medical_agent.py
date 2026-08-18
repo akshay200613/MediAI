@@ -54,8 +54,35 @@ class MedicalAgent(BaseAgent):
         use_rag = context.metadata.get("use_rag", True)
         user_message = context.messages[-1].content if context.messages else ""
 
-        if use_rag and user_message:
+        # Extract profile collection info from metadata
+        updated_fields = context.metadata.get("updated_fields", {})
+        missing_fields = context.metadata.get("missing_fields", [])
+        patient_name = context.metadata.get("patient_name", "")
+
+        # Build profile collection system prompt extension
+        profile_instruction = ""
+        if updated_fields or missing_fields:
+            import json
+            profile_instruction = "\n\n--- PATIENT PROFILE ASSISTANCE SYSTEM INSTRUCTIONS ---\n"
+            profile_instruction += f"The user is logged in as patient '{patient_name}'.\n"
+            if updated_fields:
+                profile_instruction += f"The patient just provided information that successfully updated the following fields in their profile: {json.dumps(updated_fields)}.\n"
+                profile_instruction += "Your first sentence MUST be to confirm to the patient that you have updated and saved these details in their medical records.\n"
+            if missing_fields:
+                profile_instruction += f"The following fields are still missing in their medical profile: {', '.join(missing_fields)}.\n"
+                profile_instruction += "Politely ask the patient to provide the next missing detail step-by-step (e.g. asking for their blood group, address, or emergency contact) so that they can complete their registration and be allowed to book doctor appointments.\n"
+            else:
+                profile_instruction += "All required profile details are now complete! Congratulate the patient and inform them that they can now proceed to book their doctor appointment at the Booking page (/patient/book).\n"
+            profile_instruction += "--------------------------------------------------------\n"
+
+        dynamic_system_prompt = self.system_prompt + profile_instruction
+
+        # If they just updated their profile, bypass RAG for a direct conversational response
+        bypass_rag_for_profile = bool(updated_fields)
+
+        if use_rag and user_message and not bypass_rag_for_profile:
             # Use RAG pipeline for grounded medical responses
+            self.rag.system_prompt = dynamic_system_prompt
             result = await self.rag.query(
                 user_query=user_message,
                 conversation_history=context.messages[:-1],
@@ -70,7 +97,7 @@ class MedicalAgent(BaseAgent):
             # Direct LLM response without RAG
             response = await self.llm.generate(
                 context.messages,
-                system_prompt=self.system_prompt,
+                system_prompt=dynamic_system_prompt,
             )
             return AgentResponse(
                 content=response.content,

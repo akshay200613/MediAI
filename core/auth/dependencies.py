@@ -14,10 +14,16 @@ bearer_scheme = HTTPBearer()
 
 class CurrentUser:
     """Represents the authenticated user extracted from the JWT."""
-    def __init__(self, user_id: str, email: str, role: str) -> None:
+    def __init__(self, user_id: str, email: str, role: str, full_name: str | None = None) -> None:
         self.user_id = user_id
         self.email = email
         self.role = role
+        if full_name:
+            self.full_name = full_name
+        elif email:
+            self.full_name = email.split("@")[0].capitalize()
+        else:
+            self.full_name = "User"
 
 
 async def get_current_user(
@@ -34,12 +40,19 @@ async def get_current_user(
     )
     try:
         payload = decode_token(credentials.credentials)
+        
+        # Security: Enforce access token type to prevent refresh token reuse
+        if payload.get("type") != "access":
+            raise credentials_exception
+            
         user_id: str = payload.get("sub", "")
         email: str = payload.get("email", "")
         role: str = payload.get("role", "user")
+        full_name: str | None = payload.get("full_name")
+        
         if not user_id:
             raise credentials_exception
-        return CurrentUser(user_id=user_id, email=email, role=role)
+        return CurrentUser(user_id=user_id, email=email, role=role, full_name=full_name)
     except ValueError:
         raise credentials_exception
 

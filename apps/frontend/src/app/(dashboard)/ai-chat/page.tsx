@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useChatStore } from '@/lib/hooks/useChatStore'
 import { useAuth } from '@/lib/auth/context'
@@ -12,6 +13,8 @@ import { pageTransition } from '@/lib/motion'
 
 export default function AIChatPage() {
   const { user } = useAuth()
+  const searchParams = useSearchParams()
+  const collectProfile = searchParams.get('collect_profile') === 'true'
   const {
     sessions,
     activeSessionId,
@@ -38,6 +41,38 @@ export default function AIChatPage() {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const messages = activeSession?.messages || []
+
+  useEffect(() => {
+    if (!user) return
+
+    if (sessions.length === 0 || !activeSessionId) {
+      const name = firstName || displayName || 'there'
+      const sessionId = useChatStore.getState().createSession()
+      
+      const welcomeMsg = collectProfile
+        ? `Hello ${name}! Let's get your medical profile completed so you can book your doctor consultation. I'll need to collect a few details: Date of Birth, Gender, Blood Group, Address, and Emergency Contact. Let's start with your Date of Birth (YYYY-MM-DD) and Gender. What are they?`
+        : `Hello ${name}! I'm your MediAI Clinical Assistant. How can I help you today?`
+
+      useChatStore.setState((state) => ({
+        sessions: state.sessions.map((s) => {
+          if (s.id === sessionId) {
+            return {
+              ...s,
+              messages: [
+                {
+                  id: `msg-welcome-${Date.now()}`,
+                  role: 'assistant',
+                  content: welcomeMsg,
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+            }
+          }
+          return s
+        }),
+      }))
+    }
+  }, [user, sessions.length, activeSessionId, collectProfile, firstName, displayName])
 
   // Global shortcut: Ctrl+N / Cmd+N for new consultation session
   useEffect(() => {

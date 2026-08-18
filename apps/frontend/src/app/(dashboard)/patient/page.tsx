@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
+import toast from 'react-hot-toast'
 import {
   Calendar,
   MessageSquare,
@@ -51,8 +53,15 @@ function StatCard({
 
 export default function PatientDashboardPage() {
   const { user } = useAuth()
+  const searchParams = useSearchParams()
   const [appointments, setAppointments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (searchParams.get('profile_updated') === 'true') {
+      toast.success('Personal details have been updated successfully!', { id: 'profile-update' })
+    }
+  }, [searchParams])
 
   // Derive a friendly first name — never show an email address as a name
   const firstName = React.useMemo(() => {

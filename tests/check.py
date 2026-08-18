@@ -7,7 +7,7 @@ async def main():
     client = get_qdrant_client()
 
     info = await client.get_collection(
-        "medai_medai_knowledge"
+        "medai_knowledge"
     )
 
     print(info)

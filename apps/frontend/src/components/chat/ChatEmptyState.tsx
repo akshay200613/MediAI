@@ -102,14 +102,6 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({ onSelectPrompt, 
           'MediAI Clinical Assistant'
         )}
       </motion.h1>
-      <motion.p
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.15 }}
-        className="text-xs sm:text-sm text-slate-400 text-center mt-1.5 max-w-lg font-sans"
-      >
-        RAG-powered clinical decision support system utilizing Qdrant vector retrieval and BM25 medical index.
-      </motion.p>
 
       {/* RAG Knowledge Ingestion Section */}
       <motion.div

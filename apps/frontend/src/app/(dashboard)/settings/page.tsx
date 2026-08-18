@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   User,
@@ -37,6 +38,7 @@ const SPECIALTIES = [
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export default function AccountSettingsPage() {
+  const router = useRouter()
   const { user, refreshUser } = useAuth()
   const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile')
 
@@ -172,6 +174,12 @@ export default function AccountSettingsPage() {
       await apiClient.patch('/auth/profile', payload)
       toast.success('Account profile updated successfully!')
       if (refreshUser) refreshUser()
+      
+      if (role === 'patient' || role === 'user') {
+        setTimeout(() => {
+          router.push('/patient?profile_updated=true')
+        }, 1000)
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to update profile')
     } finally {

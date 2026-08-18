@@ -218,7 +218,7 @@ async def record_consultation_notes(
     try:
         pipeline = RAGPipeline(
             llm_client=get_llm_client(),
-            collection_name="medai_medai_knowledge",
+            collection_name="medai_knowledge",
         )
         source_id = str(uuid.uuid4())
         chunks_indexed = await pipeline.ingest(

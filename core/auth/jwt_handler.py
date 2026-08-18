@@ -58,12 +58,14 @@ def decode_token(token: str) -> dict[str, Any]:
         raise ValueError(f"Invalid token: {e}") from e
 
 
-def create_token_pair(user_id: str, email: str, role: str) -> tuple[str, str]:
+def create_token_pair(user_id: str, email: str, role: str, full_name: str | None = None) -> tuple[str, str]:
     """
     Create access + refresh token pair for a user.
     Returns (access_token, refresh_token).
     """
     payload = {"sub": user_id, "email": email, "role": role}
+    if full_name:
+        payload["full_name"] = full_name
     return (
         create_access_token(payload),
         create_refresh_token(payload),

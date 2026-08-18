@@ -17,6 +17,27 @@ export default function PatientBookPage() {
   const [isBooking, setIsBooking] = useState(false)
   const [bookingStatus, setBookingStatus] = useState<{ success: boolean; message: string } | null>(null)
 
+  const [patientProfile, setPatientProfile] = useState<any | null>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setProfileLoading(true)
+        const res = await apiClient.get('/auth/profile')
+        const data = res.data?.data
+        if (data?.patient) {
+          setPatientProfile(data.patient)
+        }
+      } catch (err) {
+        console.error('Failed to fetch patient profile', err)
+      } finally {
+        setProfileLoading(false)
+      }
+    }
+    fetchProfile()
+  }, [])
+
   useEffect(() => {
     const fetchDoctors = async () => {
       try {
@@ -83,6 +104,96 @@ export default function PatientBookPage() {
     } finally {
       setIsBooking(false)
     }
+  }
+
+  const missingFieldsList = []
+  if (!patientProfile?.date_of_birth) missingFieldsList.push('Date of Birth')
+  if (!patientProfile?.gender) missingFieldsList.push('Gender')
+  if (!patientProfile?.blood_group) missingFieldsList.push('Blood Group')
+  if (!patientProfile?.address) missingFieldsList.push('Street Address')
+  if (!patientProfile?.emergency_contact_name) missingFieldsList.push('Emergency Contact Name')
+  if (!patientProfile?.emergency_contact_phone) missingFieldsList.push('Emergency Contact Phone')
+
+  const isIncomplete = missingFieldsList.length > 0
+
+  if (profileLoading || loading) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-400" />
+      </div>
+    )
+  }
+
+  if (isIncomplete) {
+    return (
+      <div className="p-6 space-y-6 bg-slate-950 min-h-screen text-slate-100 font-sans max-w-4xl">
+        <div className="border-b border-slate-800 pb-4">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-100">Book Doctor Appointment</h1>
+          <p className="text-xs text-slate-400 mt-1">Select a specialist, choose an available time slot, and confirm your booking.</p>
+        </div>
+
+        <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6 shadow-xl max-w-2xl mx-auto mt-10">
+          <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-100">Complete Medical Profile Required</h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">To ensure clinical safety, you must complete your personal details first.</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Missing Required Information:</h3>
+            <div className="flex flex-wrap gap-2">
+              {missingFieldsList.map((field) => (
+                <span key={field} className="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-rose-500/10 border border-rose-500/20 text-rose-300">
+                  ⚠️ {field}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-teal-500/40 transition-all flex flex-col justify-between">
+              <div>
+                <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 mb-2">
+                  <span className="text-xs">🤖</span>
+                </div>
+                <h4 className="font-semibold text-xs text-slate-200">Complete via AI Chatbot</h4>
+                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                  Let our RAG-powered chatbot collect your details conversationally and update them for you automatically.
+                </p>
+              </div>
+              <button
+                onClick={() => router.push('/patient/chat?collect_profile=true')}
+                className="mt-4 w-full py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-[11px] rounded-lg transition-colors"
+              >
+                Talk to AI Assistant
+              </button>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-indigo-500/40 transition-all flex flex-col justify-between">
+              <div>
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-2">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+                <h4 className="font-semibold text-xs text-slate-200">Enter Details Manually</h4>
+                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                  Fill out the standard form in your account settings manually to complete your profile records.
+                </p>
+              </div>
+              <button
+                onClick={() => router.push('/patient/profile')}
+                className="mt-4 w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] rounded-lg transition-colors"
+              >
+                Go to Profile Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

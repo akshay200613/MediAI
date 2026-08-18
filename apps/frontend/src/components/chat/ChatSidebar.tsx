@@ -237,14 +237,6 @@ export const ChatSidebar: React.FC = () => {
               )}
             </div>
 
-            {/* Knowledge Base Status Footer */}
-            <div className="p-3 border-t border-slate-800/80 bg-slate-950/60">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="font-medium text-[11px] text-slate-300">Qdrant + BM25 Connected</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-0.5">MediAI Medical Knowledge Base</p>
-            </div>
           </motion.aside>
         )}
       </AnimatePresence>

@@ -46,7 +46,7 @@ async def login(
         )
 
     access_token, refresh_token = create_token_pair(
-        str(user.id), user.email, user.role
+        str(user.id), user.email, user.role, user.full_name
     )
 
     from core.config.settings import settings
@@ -119,7 +119,7 @@ async def refresh_token(
 
     from core.config.settings import settings
     access_token, new_refresh_token = create_token_pair(
-        payload["sub"], payload["email"], payload["role"]
+        payload["sub"], payload["email"], payload["role"], payload.get("full_name")
     )
 
     return DataResponse(
@@ -289,7 +289,7 @@ async def google_auth(
             await session.commit()
 
     access_token, refresh_token = create_token_pair(
-        str(user.id), user.email, user.role
+        str(user.id), user.email, user.role, user.full_name
     )
 
     return DataResponse(
