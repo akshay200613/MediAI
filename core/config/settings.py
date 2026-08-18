@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_score_threshold: float = 0.35
 
+    # ── LangGraph Agent System ────────────────────────────────────────────────
+    langgraph_recursion_limit: int = 25
+    langgraph_checkpoint_backend: str = "memory"  # "memory" | "redis"
+
     # ── Computed ─────────────────────────────────────────────────────────────
     @computed_field  # type: ignore[prop-decorator]
     @property

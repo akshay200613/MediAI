@@ -1,0 +1,193 @@
+"""
+Supervisor Agent – orchestration brain of the MedAI graph.
+
+Responsibilities:
+
+    1. Validate the reception agent's intent classification
+    2. Decide which specialist agent to route to
+    3. Handle multi-turn flows requiring sequential agent calls
+    4. Override routing when conversation context suggests
+       a different specialist is needed
+
+The supervisor does NOT answer the user's question directly.
+It only makes routing decisions.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from langchain_core.messages import BaseMessage
+
+from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.client import Message
+from core.config.logging import get_logger
+
+
+logger = get_logger(__name__)
+
+
+SUPERVISOR_SYSTEM_PROMPT = """\
+You are the Supervisor Agent for MedAI. You decide which specialist
+agent should handle the user's request.
+
+You receive:
+- The classified intent from the reception agent
+- Extracted entities
+- Conversation history
+
+Your job is to:
+1. Validate or override the intent classification based on full context
+2. Decide the best specialist agent to handle this request
+
+Available specialists:
+- "medical_node": for symptoms, diagnoses, treatments, clinical questions
+- "scheduling_node": for appointment booking, rescheduling, cancellation
+- "knowledge_node": for hospital info, facilities, insurance, policies
+- "response_node": for greetings, small talk, or simple general queries
+
+Return ONLY valid JSON:
+{
+  "current_agent": "medical_node",
+  "intent": "medical",
+  "reasoning": "User is describing symptoms that need clinical assessment"
+}
+
+Do NOT answer the user's question. Return ONLY the routing JSON.
+"""
+
+
+class SupervisorAgent:
+    """
+    Routes requests to the appropriate specialist agent.
+
+    The supervisor can override the reception agent's initial
+    classification when conversation context provides stronger
+    signals about the user's actual need.
+    """
+
+    def __init__(self) -> None:
+        self.llm = get_llm_client()
+
+    async def process(
+        self,
+        intent: str,
+        entities: dict[str, Any],
+        conversation_history: list[BaseMessage] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Determine routing for the current request.
+
+        Args:
+            intent:
+                Intent classified by the reception agent.
+
+            entities:
+                Entities extracted by the reception agent.
+
+            conversation_history:
+                Prior conversation for context.
+
+        Returns:
+            Dict with ``current_agent`` and optionally
+            overridden ``intent``.
+        """
+
+        # Fast-path: high-confidence simple intents
+        if intent in ("medical", "scheduling", "knowledge"):
+            node = f"{intent}_node"
+
+            logger.debug(
+                "Supervisor fast-path routing",
+                intent=intent,
+                node=node,
+            )
+
+            return {
+                "current_agent": node,
+                "intent": intent,
+            }
+
+        # For ambiguous/general intents, consult the LLM
+        prompt = (
+            f"Reception classified intent: {intent}\n"
+            f"Extracted entities: {json.dumps(entities)}\n\n"
+            f"Based on the conversation context, decide which "
+            f"specialist should handle this request."
+        )
+
+        try:
+            response = await self.llm.generate(
+                messages=[Message(role="user", content=prompt)],
+                system_prompt=SUPERVISOR_SYSTEM_PROMPT,
+                temperature=0.0,
+                max_tokens=300,
+            )
+
+            result = self._parse_routing(response.content)
+
+            logger.info(
+                "Supervisor LLM routing",
+                intent=intent,
+                routed_to=result["current_agent"],
+                reasoning=result.get("reasoning", ""),
+            )
+
+            return result
+
+        except Exception as exc:
+            logger.error(
+                "Supervisor routing failed",
+                error=str(exc),
+            )
+
+            # Fallback: route to response node for general handling
+            return {
+                "current_agent": "response_node",
+                "intent": "general",
+            }
+
+    @staticmethod
+    def _parse_routing(content: str) -> dict[str, Any]:
+        """Parse the LLM's routing JSON response."""
+
+        content = content.strip()
+
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            content = "\n".join(lines).strip()
+
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning(
+                "Failed to parse supervisor response",
+                content=content[:200],
+            )
+            return {
+                "current_agent": "response_node",
+                "intent": "general",
+            }
+
+        valid_nodes = {
+            "medical_node",
+            "scheduling_node",
+            "knowledge_node",
+            "response_node",
+        }
+
+        current_agent = data.get("current_agent", "response_node")
+
+        if current_agent not in valid_nodes:
+            current_agent = "response_node"
+
+        return {
+            "current_agent": current_agent,
+            "intent": data.get("intent", "general"),
+            "reasoning": data.get("reasoning", ""),
+        }
