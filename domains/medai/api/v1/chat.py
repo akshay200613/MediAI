@@ -19,7 +19,7 @@ from core.auth.dependencies import get_current_user, CurrentUser
 from core.auth.permissions import require_permission, Permission
 from core.schemas.base import DataResponse
 from domains.medai.schemas.chat import ChatMessage, ChatResponse
-from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client
 from core.ai.conversation.session_manager import SessionManager
 from core.ai.llm.client import Message
 from core.models.user import User
@@ -29,12 +29,31 @@ logger = logging.getLogger("medai.chat_api")
 
 router = APIRouter()
 
+def has_patient_details(message: str) -> bool:
+    """Check whether the message contains patient profile information."""
+    keywords = (
+        "date of birth",
+        "dob",
+        "gender",
+        "blood group",
+        "blood type",
+        "address",
+        "city",
+        "state",
+        "emergency contact",
+    )
+
+    message_lower = message.lower()
+    return any(keyword in message_lower for keyword in keywords)
 
 async def extract_and_update_patient(user_message: str, user_id: str, email: str, session: AsyncSession) -> dict:
     """
     Extract patient details from user message and update patient record.
     Returns a dict of updated fields.
     """
+    if not has_patient_details(user_message):
+        return {}
+
     # Get or create patient record
     pat_res = await session.execute(
         select(Patient).where(
@@ -85,8 +104,8 @@ async def extract_and_update_patient(user_message: str, user_id: str, email: str
         llm = get_llm_client()
         response = await llm.generate(
             messages=[Message(role="user", content=prompt)],
-            temperature=0.0,
-            max_tokens=150,
+            temperature=1.0,
+            max_tokens=500,
         )
         content = response.content.strip()
         

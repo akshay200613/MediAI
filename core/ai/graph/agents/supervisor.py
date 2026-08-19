@@ -20,9 +20,10 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client
 from core.ai.llm.client import Message
 from core.config.logging import get_logger
+from core.config.settings import settings
 
 
 logger = get_logger(__name__)
@@ -109,44 +110,18 @@ class SupervisorAgent:
                 "intent": intent,
             }
 
-        # For ambiguous/general intents, consult the LLM
-        prompt = (
-            f"Reception classified intent: {intent}\n"
-            f"Extracted entities: {json.dumps(entities)}\n\n"
-            f"Based on the conversation context, decide which "
-            f"specialist should handle this request."
+        # General / unknown intents → route directly to response_node
+        # No LLM call needed — saves an API request per message
+        logger.debug(
+            "Supervisor deterministic routing (no LLM call)",
+            intent=intent,
+            node="response_node",
         )
 
-        try:
-            response = await self.llm.generate(
-                messages=[Message(role="user", content=prompt)],
-                system_prompt=SUPERVISOR_SYSTEM_PROMPT,
-                temperature=0.0,
-                max_tokens=300,
-            )
-
-            result = self._parse_routing(response.content)
-
-            logger.info(
-                "Supervisor LLM routing",
-                intent=intent,
-                routed_to=result["current_agent"],
-                reasoning=result.get("reasoning", ""),
-            )
-
-            return result
-
-        except Exception as exc:
-            logger.error(
-                "Supervisor routing failed",
-                error=str(exc),
-            )
-
-            # Fallback: route to response node for general handling
-            return {
-                "current_agent": "response_node",
-                "intent": "general",
-            }
+        return {
+            "current_agent": "response_node",
+            "intent": "general",
+        }
 
     @staticmethod
     def _parse_routing(content: str) -> dict[str, Any]:

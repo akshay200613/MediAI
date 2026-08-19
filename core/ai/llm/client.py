@@ -32,6 +32,7 @@ class BaseLLMClient(ABC):
         self,
         messages: list[Message],
         *,
+        model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
         system_prompt: str | None = None,
@@ -44,6 +45,7 @@ class BaseLLMClient(ABC):
         self,
         messages: list[Message],
         *,
+        model: str | None = None,
         temperature: float | None = None,
         system_prompt: str | None = None,
     ) -> AsyncIterator[str]:

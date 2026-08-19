@@ -442,6 +442,7 @@ class RAGPipeline:
         top_k: int | None = None,
         filters: dict[str, Any] | None = None,
         conversation_history: list[Message] | None = None,
+        model: str | None = None,
     ) -> RAGResult:
         """
         Execute the complete hybrid RAG pipeline.
@@ -600,6 +601,7 @@ class RAGPipeline:
         response = await self.llm.generate(
             messages,
             system_prompt=self.system_prompt,
+            model=model,
         )
 
         logger.info(

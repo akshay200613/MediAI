@@ -19,7 +19,7 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client
 from core.ai.llm.client import Message
 from core.ai.rag.pipeline import RAGPipeline
 from core.config.logging import get_logger
@@ -122,6 +122,7 @@ class KnowledgeAgent:
                 user_query=message,
                 conversation_history=history,
                 filters=filters,
+                model=settings.model_knowledge,
             )
 
             tool_results = [

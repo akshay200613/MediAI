@@ -16,9 +16,9 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_litellm import ChatLiteLLM
 
-from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client
 from core.ai.rag.pipeline import RAGPipeline
 from core.ai.graph.tools.server import mcp_server
 from core.config.logging import get_logger
@@ -61,15 +61,15 @@ class MedicalGraphAgent:
     """
     LangGraph-native medical agent.
 
-    Uses ChatGoogleGenerativeAI bound with FastMCP tools
+    Uses ChatLiteLLM bound with FastMCP tools
     (including the knowledge base tool) for autonomous tool calling.
+    Falls back to Groq via the shared LiteLLM Router on rate limits.
     """
 
     def __init__(self) -> None:
-        self.llm = ChatGoogleGenerativeAI(
-            model=settings.gemini_model,
-            google_api_key=settings.google_api_key,
-            temperature=0.0,
+        self.llm = ChatLiteLLM(
+            model=settings.model_medical,
+            temperature=1.0,
         )
 
     async def process(

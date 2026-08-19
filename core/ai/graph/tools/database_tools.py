@@ -38,7 +38,7 @@ async def query_knowledge_base(question: str) -> dict[str, Any]:
         Answer from the knowledge base with source citations.
     """
 
-    from core.ai.llm.gemini_client import get_llm_client
+    from core.ai.llm.litellm_client import get_llm_client
     from core.ai.rag.pipeline import RAGPipeline
     from core.config.settings import settings
 
@@ -97,7 +97,7 @@ async def get_hospital_info(topic: str) -> dict[str, Any]:
         Targeted information about the requested topic.
     """
 
-    from core.ai.llm.gemini_client import get_llm_client
+    from core.ai.llm.litellm_client import get_llm_client
     from core.ai.rag.pipeline import RAGPipeline
     from core.config.settings import settings
 

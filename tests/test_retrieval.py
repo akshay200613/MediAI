@@ -28,7 +28,7 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client
 from core.ai.rag.pipeline import RAGPipeline
 
 

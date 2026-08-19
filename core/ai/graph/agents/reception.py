@@ -18,9 +18,10 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client
 from core.ai.llm.client import Message
 from core.config.logging import get_logger
+from core.config.settings import settings
 
 
 logger = get_logger(__name__)
@@ -106,8 +107,8 @@ class ReceptionAgent:
             response = await self.llm.generate(
                 messages=[Message(role="user", content=prompt)],
                 system_prompt=RECEPTION_SYSTEM_PROMPT,
-                temperature=0.0,
                 max_tokens=500,
+                model=settings.model_reception,
             )
 
             result = self._parse_classification(response.content)

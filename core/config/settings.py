@@ -77,13 +77,39 @@ class Settings(BaseSettings):
     admin_password: str = ""
     admin_full_name: str = "MediAI Admin"
 
-    # ── Google AI / Gemini ────────────────────────────────────────────────────
-    google_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    # ── Google AI / Gemini (Embeddings & Fallback) ─────────────────────────────
+    gemini_api_key: str = ""
     gemini_embedding_model: str = "text-embedding-001"
     gemini_embedding_dimension: int = 768
     gemini_max_tokens: int = 8192
     gemini_temperature: float = 0.7
+
+    # ── Groq Fallback ─────────────────────────────────────────────────────────
+    groq_api_key: str = ""
+
+    # ── LiteLLM Model Routing (Primary) ───────────────────────────────────────
+    model_reception: str = "gemini/gemini-1.5-flash"
+    model_medical: str = "gemini/gemini-1.5-pro"
+    model_scheduling: str = "gemini/gemini-1.5-flash"
+    model_knowledge: str = "gemini/gemini-1.5-flash"
+    model_supervisor: str = "gemini/gemini-1.5-pro"
+
+    # ── LiteLLM Model Routing (Fallback → Groq) ──────────────────────────────
+    model_fallback_reception: str = "groq/llama-3.3-70b-versatile"
+    model_fallback_medical: str = "groq/llama-3.3-70b-versatile"
+    model_fallback_scheduling: str = "groq/llama-3.3-70b-versatile"
+    model_fallback_knowledge: str = "groq/llama-3.3-70b-versatile"
+    model_fallback_supervisor: str = "groq/llama-3.3-70b-versatile"
+
+    # ── LiteLLM Router ────────────────────────────────────────────────────────
+    litellm_num_retries: int = 2
+    litellm_request_timeout: int = 30
+    litellm_cache_enabled: bool = True
+
+    # ── LangSmith Observability ────────────────────────────────────────────────
+    langchain_tracing_v2: bool = False
+    langchain_api_key: str = ""
+    langchain_project: str = "mediai"
 
     # ── RAG Pipeline ─────────────────────────────────────────────────────────
     rag_chunk_size: int = 512

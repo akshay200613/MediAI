@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_litellm import ChatLiteLLM
 
 from core.ai.graph.tools.server import mcp_server
 from core.config.logging import get_logger
@@ -75,13 +75,13 @@ class SchedulingAgent:
     Handles appointment booking, rescheduling, and cancellation.
 
     Uses LangChain and FastMCP tools for autonomous execution.
+    Falls back to Groq via the shared LiteLLM Router on rate limits.
     """
 
     def __init__(self) -> None:
-        self.llm = ChatGoogleGenerativeAI(
-            model=settings.gemini_model,
-            google_api_key=settings.google_api_key,
-            temperature=0.0,
+        self.llm = ChatLiteLLM(
+            model=settings.model_scheduling,
+            temperature=1.0,
         )
 
     async def process(

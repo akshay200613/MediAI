@@ -192,7 +192,7 @@ async def record_consultation_notes(
     and ingest notes into the RAG knowledge base for patient history tracking.
     """
     from core.ai.rag.pipeline import RAGPipeline
-    from core.ai.llm.gemini_client import get_llm_client
+    from core.ai.llm.litellm_client import get_llm_client
     from domains.medai.models.appointment import Appointment, AppointmentStatus
 
     notes_text = body.get("notes", "").strip()

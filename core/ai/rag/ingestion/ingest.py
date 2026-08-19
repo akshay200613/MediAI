@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client
 from core.ai.rag.ingestion.loaders.json_loader import JSONDocumentLoader
 from core.ai.rag.ingestion.loaders.pdf_loader import PDFDocumentLoader
 from core.ai.rag.pipeline import RAGPipeline

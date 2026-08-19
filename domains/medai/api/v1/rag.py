@@ -7,7 +7,7 @@ from core.auth.dependencies import get_current_user, CurrentUser
 from core.auth.permissions import require_permission, Permission
 from core.schemas.base import DataResponse
 from core.ai.rag.pipeline import RAGPipeline
-from core.ai.llm.gemini_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client
 from core.config.settings import settings
 from core.config.logging import get_logger
 
