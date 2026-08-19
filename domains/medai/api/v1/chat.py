@@ -178,6 +178,42 @@ async def chat(
     session_id = message.session_id or str(uuid.uuid4())
     session_mgr = SessionManager(session)
 
+    # Fast-path for simple small talk (bypasses LLM and LangGraph completely)
+    import re
+    user_msg_lower = message.content.strip().lower()
+    # Remove punctuation for matching
+    clean_msg = re.sub(r'[^\w\s]', '', user_msg_lower).strip()
+    
+    small_talk_greetings = {"hi", "hello", "hey", "good morning", "good evening", "good afternoon"}
+    small_talk_thanks = {"thanks", "thank you", "thank u", "thx"}
+    
+    if clean_msg in small_talk_greetings:
+        reply = "Hello! I am MedAI, your intelligent clinic assistant. How can I assist you with medical questions, appointment scheduling, or hospital information today?"
+        await session_mgr.add_exchange(current_user.user_id, session_id, message.content, reply)
+        return DataResponse(
+            data=ChatResponse(
+                content=reply,
+                session_id=session_id,
+                sources=[],
+                agent_name="supervisor",
+                tool_calls=[],
+            ),
+            message="Chat processed successfully",
+        )
+    elif clean_msg in small_talk_thanks:
+        reply = "You're very welcome! Let me know if you need any further assistance."
+        await session_mgr.add_exchange(current_user.user_id, session_id, message.content, reply)
+        return DataResponse(
+            data=ChatResponse(
+                content=reply,
+                session_id=session_id,
+                sources=[],
+                agent_name="supervisor",
+                tool_calls=[],
+            ),
+            message="Chat processed successfully",
+        )
+
     # Load conversation history for current session
     history = await session_mgr.get_last_n_messages(current_user.user_id, session_id, n=10)
     

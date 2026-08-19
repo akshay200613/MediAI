@@ -130,6 +130,17 @@ async def book_appointment(
 
             await session.commit()
 
+            try:
+                from domains.medai.websockets.manager import manager
+                await manager.notify_appointment_event(
+                    "appointment_created",
+                    appointment.model_dump(mode="json"),
+                    patient_id=str(appointment.patient_id),
+                    doctor_id=str(appointment.doctor_id),
+                )
+            except Exception as e:
+                logger.warning(f"WebSocket broadcast failed: {e}")
+
             return {
                 "success": True,
                 "appointment": appointment.model_dump(mode="json"),
@@ -184,6 +195,17 @@ async def cancel_appointment(
                 }
 
             await session.commit()
+
+            try:
+                from domains.medai.websockets.manager import manager
+                await manager.notify_appointment_event(
+                    "appointment_cancelled",
+                    appointment.model_dump(mode="json"),
+                    patient_id=str(appointment.patient_id),
+                    doctor_id=str(appointment.doctor_id),
+                )
+            except Exception as e:
+                logger.warning(f"WebSocket broadcast failed: {e}")
 
             return {
                 "success": True,

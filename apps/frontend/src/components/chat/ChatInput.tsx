@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
-import { ArrowUp, UploadCloud, Loader2, FileText, CheckCircle2, AlertCircle } from 'lucide-react'
+import { ArrowUp, UploadCloud, Loader2, Square } from 'lucide-react'
 import { ragApi } from '@/lib/api/rag'
+import { useChatStore } from '@/lib/hooks/useChatStore'
 
 interface ChatInputProps {
   onSend: (text: string) => void
@@ -11,6 +12,7 @@ interface ChatInputProps {
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onSend, isGenerating, onDocumentUploaded }) => {
+  const { stopGeneration } = useChatStore()
   const [text, setText] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [uploadNotice, setUploadNotice] = useState<string | null>(null)
@@ -111,18 +113,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, isGenerating, onDo
           />
 
           {/* Submit Action Button */}
-          <button
-            type="submit"
-            disabled={!text.trim() || isGenerating}
-            className="p-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-medium shadow-md shadow-teal-900/20 transition-all shrink-0 disabled:opacity-40 disabled:hover:bg-teal-600 disabled:cursor-not-allowed"
-            title="Send query (Enter)"
-          >
-            {isGenerating ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
+          {isGenerating ? (
+            <button
+              type="button"
+              onClick={stopGeneration}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium shadow-md transition-all shrink-0"
+              title="Stop generating"
+            >
+              <Square className="w-5 h-5 fill-current" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!text.trim()}
+              className="p-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-medium shadow-md shadow-teal-900/20 transition-all shrink-0 disabled:opacity-40 disabled:hover:bg-teal-600 disabled:cursor-not-allowed"
+              title="Send query (Enter)"
+            >
               <ArrowUp className="w-5 h-5" />
-            )}
-          </button>
+            </button>
+          )}
         </div>
 
         {/* Footer Shortcut & Disclaimer */}

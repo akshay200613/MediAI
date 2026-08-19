@@ -268,10 +268,9 @@ async def response_node(state: MedAIState) -> dict:
     # Fallback for general intent – produce a helpful reply.
     return {
         "final_response": (
-            "I'm MedAI, your intelligent clinic assistant. "
-            "I can help you with medical questions, appointment "
-            "scheduling, and hospital information. "
-            "How can I assist you today?"
+            "I'm sorry, but I didn't quite understand that. "
+            "I'm MedAI, your intelligent clinic assistant, and I can help you with medical questions, "
+            "appointment scheduling, and hospital information. Could you please rephrase your question?"
         ),
     }
 
