@@ -19,9 +19,9 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
-from langchain_litellm import ChatLiteLLM
 
 from core.ai.graph.tools.server import mcp_server
+from core.ai.llm.litellm_client import get_fallback_chat_llm, AIServiceUnavailableError
 from core.config.logging import get_logger
 from core.config.settings import settings
 
@@ -59,7 +59,9 @@ When handling appointment requests:
 
 4. Present doctor availability clearly with time slots.
 
-5. After booking, provide a confirmation summary with:
+5. NEVER ask the user for a Doctor ID or Patient ID. The ID is an internal system detail. If the user provides a doctor's name, you MUST use the `get_doctor_availability` tool with the `name` parameter to find their schedule and Doctor ID automatically.
+
+6. After booking, provide a confirmation summary with:
    - Appointment ID
    - Doctor name
    - Date/time
@@ -75,14 +77,61 @@ class SchedulingAgent:
     Handles appointment booking, rescheduling, and cancellation.
 
     Uses LangChain and FastMCP tools for autonomous execution.
-    Falls back to Groq via the shared LiteLLM Router on rate limits.
+    Falls back to Groq explicitly on Gemini rate-limit / quota errors.
     """
 
+    _RATE_LIMIT_SIGNALS = (
+        "RateLimitError", "ResourceExhausted", "RESOURCE_EXHAUSTED",
+        "quota", "429", "rate limit", "rate_limit",
+    )
+
     def __init__(self) -> None:
-        self.llm = ChatLiteLLM(
-            model=settings.model_scheduling,
-            temperature=1.0,
-        )
+        self._primary_model = settings.model_scheduling
+        self._fallback_model = settings.model_fallback_scheduling
+        self._temperature = 1.0
+        # Primary ChatLiteLLM (Gemini)
+        self.llm = self._make_llm(self._primary_model, settings.gemini_api_key)
+
+    def _make_llm(self, model: str, api_key: str):
+        from langchain_litellm import ChatLiteLLM
+        return ChatLiteLLM(model=model, temperature=self._temperature, api_key=api_key)
+
+    def _is_rate_limit(self, exc: Exception) -> bool:
+        exc_str = str(exc)
+        return any(signal in exc_str for signal in self._RATE_LIMIT_SIGNALS)
+
+    async def _invoke_with_fallback(self, llm, tools, messages):
+        """Invoke the LLM. On Gemini rate-limit, transparently retry with Groq."""
+        try:
+            return await llm.bind_tools(tools).ainvoke(messages)
+        except AIServiceUnavailableError:
+            raise
+        except Exception as primary_exc:
+            if not self._is_rate_limit(primary_exc):
+                raise
+
+            logger.warning(
+                "Scheduling: Gemini rate-limited – switching to Groq fallback",
+                fallback=self._fallback_model,
+                error=str(primary_exc)[:120],
+            )
+
+            if not self._fallback_model or not settings.groq_api_key:
+                raise AIServiceUnavailableError(
+                    AIServiceUnavailableError.USER_MESSAGE
+                ) from primary_exc
+
+            fallback_llm = self._make_llm(self._fallback_model, settings.groq_api_key)
+            try:
+                return await fallback_llm.bind_tools(tools).ainvoke(messages)
+            except Exception as fallback_exc:
+                logger.error(
+                    "Scheduling: Groq fallback also failed",
+                    error=str(fallback_exc)[:120],
+                )
+                raise AIServiceUnavailableError(
+                    AIServiceUnavailableError.USER_MESSAGE
+                ) from fallback_exc
 
     async def process(
         self,
@@ -121,6 +170,7 @@ class SchedulingAgent:
         
         if patient_context:
             context_parts.append("\n--- PATIENT CONTEXT ---")
+            context_parts.append(f"Patient ID: {patient_context.get('patient_id')}")
             context_parts.append(f"Name: {patient_context.get('first_name')} {patient_context.get('last_name')}")
             context_parts.append(f"Date of Birth: {patient_context.get('date_of_birth')}")
             context_parts.append(f"Blood Group: {patient_context.get('blood_group')}")
@@ -169,14 +219,12 @@ class SchedulingAgent:
                 
             tools = [t.fn for t in all_tools if t.name in scheduling_tool_names and hasattr(t, "fn")]
 
-            llm_with_tools = self.llm.bind_tools(tools)
-
             messages = [SystemMessage(content=SCHEDULING_SYSTEM_PROMPT)]
             if conversation_history:
                 messages.extend(conversation_history)
             messages.append(HumanMessage(content=prompt))
 
-            response = await llm_with_tools.ainvoke(messages)
+            response = await self._invoke_with_fallback(self.llm, tools, messages)
 
             # Check if medical handoff is needed
             needs_medical = self._check_medical_need(message, entities)
@@ -193,6 +241,8 @@ class SchedulingAgent:
                 "requires_handoff": needs_medical,
             }
 
+        except AIServiceUnavailableError:
+            raise
         except Exception as exc:
             logger.error(
                 "Scheduling agent failed",

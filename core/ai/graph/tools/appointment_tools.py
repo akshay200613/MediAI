@@ -228,6 +228,7 @@ async def cancel_appointment(
 async def get_doctor_availability(
     doctor_id: str | None = None,
     specialty: str | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
     """
     Check doctor availability and schedule information.
@@ -235,6 +236,7 @@ async def get_doctor_availability(
     Args:
         doctor_id: Optional specific doctor's UUID.
         specialty: Optional specialty to filter available doctors.
+        name: Optional name of the doctor to search for.
 
     Returns:
         List of available doctors with their schedule info.
@@ -267,8 +269,11 @@ async def get_doctor_availability(
                     ],
                 }
 
-            # List available doctors, optionally filtered by specialty
-            doctors = await service.get_available_doctors(specialty)
+            if name:
+                doctors = await service.search_doctors(name)
+            else:
+                # List available doctors, optionally filtered by specialty
+                doctors = await service.get_available_doctors(specialty)
 
             return {
                 "count": len(doctors),

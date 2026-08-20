@@ -28,6 +28,7 @@ from core.ai.graph.agents.scheduling import SchedulingAgent
 from core.ai.graph.agents.supervisor import SupervisorAgent
 from core.ai.graph.state import MedAIState
 from core.ai.graph.tools.server import mcp_server
+from core.ai.llm.litellm_client import AIServiceUnavailableError  # noqa: F401 – re-exported for graph callers
 from langgraph.prebuilt import ToolNode
 from core.config.logging import get_logger
 
@@ -110,9 +111,9 @@ async def reception_node(state: MedAIState) -> dict:
         intent=result["intent"],
         entities=result.get("entities", {}),
     )
-    
+
     patient_context = state.get("patient_context", {})
-    
+
     # If we have a user_id and haven't fetched the context yet
     if state.get("user_id") and not patient_context:
         try:
@@ -166,6 +167,9 @@ async def medical_node(state: MedAIState) -> dict:
 
     Uses the RAG pipeline for grounded medical knowledge
     and patient tools for history lookup.
+
+    Raises ``AIServiceUnavailableError`` when both Gemini and Groq fail
+    so the chat endpoint can return a proper 503.
     """
 
     agent = _get_medical()
@@ -196,6 +200,9 @@ async def scheduling_node(state: MedAIState) -> dict:
     Appointment specialist – books, reschedules, cancels.
 
     Uses appointment tools and patient tools via MCP.
+
+    Raises ``AIServiceUnavailableError`` when both Gemini and Groq fail
+    so the chat endpoint can return a proper 503.
     """
 
     agent = _get_scheduling()
@@ -228,6 +235,9 @@ async def knowledge_node(state: MedAIState) -> dict:
     Answers questions about facilities, insurance, contact
     info, and operational policies using the RAG pipeline
     and database tools.
+
+    Raises ``AIServiceUnavailableError`` when both Gemini and Groq fail
+    so the chat endpoint can return a proper 503.
     """
 
     agent = _get_knowledge()
@@ -277,6 +287,7 @@ async def response_node(state: MedAIState) -> dict:
 
 _tool_node_instance: ToolNode | None = None
 
+
 async def mcp_tool_node(state: MedAIState) -> dict:
     """
     Executes tool calls requested by the agents.
@@ -287,7 +298,7 @@ async def mcp_tool_node(state: MedAIState) -> dict:
         all_tools = await mcp_server.list_tools()
         tools = [t.fn for t in all_tools if hasattr(t, "fn")]
         _tool_node_instance = ToolNode(tools)
-    
+
     # ToolNode returns {"messages": [ToolMessage(...)]}
     return await _tool_node_instance.ainvoke(state)
 

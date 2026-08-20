@@ -9,7 +9,7 @@ import logging
 from typing import AsyncIterator
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +19,7 @@ from core.auth.dependencies import get_current_user, CurrentUser
 from core.auth.permissions import require_permission, Permission
 from core.schemas.base import DataResponse
 from domains.medai.schemas.chat import ChatMessage, ChatResponse
-from core.ai.llm.litellm_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client, AIServiceUnavailableError
 from core.ai.conversation.session_manager import SessionManager
 from core.ai.llm.client import Message
 from core.models.user import User
@@ -160,6 +160,9 @@ async def extract_and_update_patient(user_message: str, user_id: str, email: str
             logger.info(f"Updated patient {pat.id} details via chatbot: {updated_fields}")
             
         return updated_fields
+    except AIServiceUnavailableError as exc:
+        logger.warning(f"AI service unavailable during patient extraction: {exc}")
+        return {}
     except Exception as exc:
         logger.error(f"Failed to extract patient info from message: {exc}")
         return {}
@@ -283,6 +286,7 @@ async def chat(
     patient_context = {}
     if pat:
         patient_context = {
+            "patient_id": str(pat.id),
             "first_name": pat.first_name,
             "last_name": pat.last_name,
             "email": pat.email,
@@ -309,7 +313,13 @@ async def chat(
     }
     
     config = {"configurable": {"thread_id": session_id}}
-    result = await graph.ainvoke(state, config=config)
+    try:
+        result = await graph.ainvoke(state, config=config)
+    except AIServiceUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Graph invocation failed: {exc}")
+        raise HTTPException(status_code=503, detail=AIServiceUnavailableError.USER_MESSAGE)
     
     final_response_text = result.get("final_response")
     if not final_response_text and result.get("messages"):

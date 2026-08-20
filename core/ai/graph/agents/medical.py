@@ -16,9 +16,8 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
-from langchain_litellm import ChatLiteLLM
 
-from core.ai.llm.litellm_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client, get_fallback_chat_llm, AIServiceUnavailableError
 from core.ai.rag.pipeline import RAGPipeline
 from core.ai.graph.tools.server import mcp_server
 from core.config.logging import get_logger
@@ -63,14 +62,60 @@ class MedicalGraphAgent:
 
     Uses ChatLiteLLM bound with FastMCP tools
     (including the knowledge base tool) for autonomous tool calling.
-    Falls back to Groq via the shared LiteLLM Router on rate limits.
+    Falls back to Groq explicitly on Gemini rate-limit / quota errors.
     """
 
+    _RATE_LIMIT_SIGNALS = (
+        "RateLimitError", "ResourceExhausted", "RESOURCE_EXHAUSTED",
+        "quota", "429", "rate limit", "rate_limit",
+    )
+
     def __init__(self) -> None:
-        self.llm = ChatLiteLLM(
-            model=settings.model_medical,
-            temperature=1.0,
-        )
+        self._primary_model = settings.model_medical
+        self._fallback_model = settings.model_fallback_medical
+        self._temperature = 1.0
+        self.llm = self._make_llm(self._primary_model, settings.gemini_api_key)
+
+    def _make_llm(self, model: str, api_key: str):
+        from langchain_litellm import ChatLiteLLM
+        return ChatLiteLLM(model=model, temperature=self._temperature, api_key=api_key)
+
+    def _is_rate_limit(self, exc: Exception) -> bool:
+        exc_str = str(exc)
+        return any(signal in exc_str for signal in self._RATE_LIMIT_SIGNALS)
+
+    async def _invoke_with_fallback(self, llm, tools, messages):
+        """Invoke the LLM. On Gemini rate-limit, transparently retry with Groq."""
+        try:
+            return await llm.bind_tools(tools).ainvoke(messages)
+        except AIServiceUnavailableError:
+            raise
+        except Exception as primary_exc:
+            if not self._is_rate_limit(primary_exc):
+                raise
+
+            logger.warning(
+                "Medical: Gemini rate-limited – switching to Groq fallback",
+                fallback=self._fallback_model,
+                error=str(primary_exc)[:120],
+            )
+
+            if not self._fallback_model or not settings.groq_api_key:
+                raise AIServiceUnavailableError(
+                    AIServiceUnavailableError.USER_MESSAGE
+                ) from primary_exc
+
+            fallback_llm = self._make_llm(self._fallback_model, settings.groq_api_key)
+            try:
+                return await fallback_llm.bind_tools(tools).ainvoke(messages)
+            except Exception as fallback_exc:
+                logger.error(
+                    "Medical: Groq fallback also failed",
+                    error=str(fallback_exc)[:120],
+                )
+                raise AIServiceUnavailableError(
+                    AIServiceUnavailableError.USER_MESSAGE
+                ) from fallback_exc
 
     async def process(
         self,
@@ -132,14 +177,12 @@ class MedicalGraphAgent:
             }
             tools = [t.fn for t in all_tools if t.name in medical_tool_names and hasattr(t, "fn")]
 
-            llm_with_tools = self.llm.bind_tools(tools)
-
             messages = [SystemMessage(content=MEDICAL_SYSTEM_PROMPT)]
             if conversation_history:
                 messages.extend(conversation_history)
             messages.append(HumanMessage(content=prompt))
 
-            response = await llm_with_tools.ainvoke(messages)
+            response = await self._invoke_with_fallback(self.llm, tools, messages)
 
             # Check if scheduling handoff is needed
             needs_scheduling = self._check_scheduling_need(message, entities)
@@ -155,6 +198,8 @@ class MedicalGraphAgent:
                 "requires_handoff": needs_scheduling,
             }
 
+        except AIServiceUnavailableError:
+            raise
         except Exception as exc:
             logger.error(
                 "Medical agent failed",

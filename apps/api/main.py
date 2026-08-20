@@ -25,9 +25,22 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan: startup → yield → shutdown."""
+    import os
     # Startup
     configure_logging()
     logger.info("Starting MedAI", version=settings.app_version, env=settings.environment)
+
+    # Inject provider API keys into os.environ so litellm can find them
+    # regardless of which call path (Router, ChatLiteLLM, direct acompletion) is used.
+    if settings.gemini_api_key:
+        os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
+        os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
+    if settings.groq_api_key:
+        os.environ["GROQ_API_KEY"] = settings.groq_api_key
+
+    # Force the LiteLLM Router singleton to rebuild with current settings.
+    from core.ai.llm.litellm_client import reset_router
+    reset_router()
 
     # Ensure DB tables exist (for dev; use Alembic in prod)
     if settings.is_development:

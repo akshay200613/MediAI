@@ -22,6 +22,12 @@ from core.config.settings import settings
 
 logger = get_logger(__name__)
 
+
+class AIServiceUnavailableError(RuntimeError):
+    """Raised when every LLM provider (primary + all fallbacks) has failed."""
+
+    USER_MESSAGE = "The AI service is temporarily unavailable. Please try again."
+
 # Suppress noisy LiteLLM debug output in dev
 litellm.suppress_debug_info = True
 
@@ -261,11 +267,11 @@ class LiteLLMClient(BaseLLMClient):
 
         except Exception as exc:
             logger.error(
-                "LiteLLM Router generation failed (all deployments)",
+                "LiteLLM Router generation failed (all deployments — Gemini and Groq both unavailable)",
                 error=str(exc),
                 model=model_name,
             )
-            raise
+            raise AIServiceUnavailableError(AIServiceUnavailableError.USER_MESSAGE) from exc
 
     async def stream(
         self,
@@ -305,11 +311,11 @@ class LiteLLMClient(BaseLLMClient):
 
         except Exception as exc:
             logger.error(
-                "LiteLLM Router streaming failed (all deployments)",
+                "LiteLLM Router streaming failed (all deployments — Gemini and Groq both unavailable)",
                 error=str(exc),
                 model=model_name,
             )
-            raise
+            raise AIServiceUnavailableError(AIServiceUnavailableError.USER_MESSAGE) from exc
 
     async def embed(
         self,
@@ -348,15 +354,46 @@ class LiteLLMClient(BaseLLMClient):
 
 _router: Router | None = None
 _litellm_client: LiteLLMClient | None = None
+_router_settings_fingerprint: str | None = None
+
+
+def _router_fingerprint() -> str:
+    """Return a string that changes whenever any routing-relevant setting changes."""
+    agents = ["reception", "medical", "scheduling", "knowledge", "supervisor"]
+    parts = [
+        settings.gemini_api_key,
+        settings.groq_api_key,
+    ]
+    for agent in agents:
+        parts.append(getattr(settings, f"model_{agent}", ""))
+        parts.append(getattr(settings, f"model_fallback_{agent}", ""))
+    return "|".join(parts)
+
+
+def reset_router() -> None:
+    """Force the Router (and LiteLLM client) to be rebuilt on the next call."""
+    global _router, _litellm_client, _router_settings_fingerprint
+    _router = None
+    _litellm_client = None
+    _router_settings_fingerprint = None
+    logger.info("LiteLLM Router singleton reset – will be rebuilt on next request")
 
 
 def get_router() -> Router:
-    """Return the singleton Router instance."""
+    """Return the Router singleton, rebuilding it if settings have changed."""
 
-    global _router
+    global _router, _router_settings_fingerprint
 
-    if _router is None:
+    current_fp = _router_fingerprint()
+    if _router is None or _router_settings_fingerprint != current_fp:
+        if _router is not None:
+            logger.info(
+                "LiteLLM Router settings changed – rebuilding",
+                old_fp=_router_settings_fingerprint,
+                new_fp=current_fp,
+            )
         _router = _build_router()
+        _router_settings_fingerprint = current_fp
 
     return _router
 
@@ -366,7 +403,74 @@ def get_llm_client() -> LiteLLMClient:
 
     global _litellm_client
 
-    if _litellm_client is None:
-        _litellm_client = LiteLLMClient(router=get_router())
+    router = get_router()  # may rebuild if settings changed
+    if _litellm_client is None or _litellm_client._router is not router:
+        _litellm_client = LiteLLMClient(router=router)
 
     return _litellm_client
+
+
+def get_fallback_chat_llm(
+    primary_model: str,
+    fallback_model: str,
+    temperature: float = 1.0,
+) -> "ChatLiteLLM":
+    """
+    Return a ``ChatLiteLLM`` instance that falls back to Groq on Gemini failure.
+
+    ``ChatLiteLLM`` supports LangChain's ``bind_tools()`` interface required by
+    the tool-calling agents (medical, scheduling).
+
+    We use **litellm module-level fallbacks** (``litellm.fallbacks``) which are
+    the most reliable way to configure fallback behaviour for ChatLiteLLM calls.
+    The Router-level fallbacks only apply when using ``router.acompletion()`` —
+    for direct ``ChatLiteLLM`` calls we must configure litellm globally instead.
+
+    Args:
+        primary_model:  Gemini model string  (e.g. ``gemini/gemini-3-flash-preview``).
+        fallback_model: Groq model string    (e.g. ``groq/llama3-8b-8192``).
+        temperature:    Sampling temperature for both models.
+    """
+    from langchain_litellm import ChatLiteLLM  # local import avoids circular dep
+
+    # ------------------------------------------------------------------
+    # Configure module-level fallbacks so any ChatLiteLLM call on the
+    # primary model will automatically switch to the fallback on 429/5xx.
+    # ------------------------------------------------------------------
+    if settings.groq_api_key and fallback_model:
+        # litellm.fallbacks format: list of {primary: [fallback, ...]}
+        existing: list = getattr(litellm, "fallbacks", None) or []
+        # Remove stale entry for this primary (settings may have changed)
+        existing = [f for f in existing if primary_model not in f]
+        existing.append({primary_model: [fallback_model]})
+        litellm.fallbacks = existing
+
+        # Ensure both API keys are set at module level
+        litellm.api_key = settings.gemini_api_key or litellm.api_key
+
+        # Register Groq API key via litellm's provider key dict
+        if not hasattr(litellm, "_groq_api_key_set"):
+            import os
+            os.environ.setdefault("GROQ_API_KEY", settings.groq_api_key)
+
+        logger.debug(
+            "ChatLiteLLM module-level fallback registered",
+            primary=primary_model,
+            fallback=fallback_model,
+        )
+    else:
+        logger.warning(
+            "No Groq API key or fallback model configured – ChatLiteLLM has no fallback",
+            primary=primary_model,
+        )
+
+    llm = ChatLiteLLM(
+        model=primary_model,
+        temperature=temperature,
+        api_key=settings.gemini_api_key,
+        max_retries=1,
+    )
+
+    return llm
+
+

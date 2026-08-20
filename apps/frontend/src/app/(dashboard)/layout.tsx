@@ -61,7 +61,6 @@ const getRoleNavItems = (role?: string): NavItem[] => {
       { href: '/patient/appointments', label: 'My Appointments', icon: Calendar },
       { href: '/patient/profile', label: 'Medical Profile', icon: FileText },
       { href: '/patient/chat', label: 'AI Medical Chat', icon: MessageSquare },
-      { href: '/settings', label: 'Account Settings', icon: Settings },
     ]
   }
 
@@ -70,7 +69,6 @@ const getRoleNavItems = (role?: string): NavItem[] => {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/ai-chat', label: 'AI Chat', icon: MessageSquare },
     { href: '/appointments', label: 'Appointments', icon: Calendar },
-    { href: '/settings', label: 'Settings', icon: Settings },
   ]
 }
 
@@ -363,11 +361,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <p className="text-[10px] text-slate-400 truncate">{user?.email}</p>
                     </div>
                     <Link
-                      href="/settings"
+                      href={(user?.role === 'patient' || user?.role === 'user') ? '/patient/profile' : '/settings'}
                       onClick={() => setProfileOpen(false)}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/5 transition-colors"
                     >
-                      <Settings className="w-4 h-4" /> Account Settings
+                      <Settings className="w-4 h-4" /> {(user?.role === 'patient' || user?.role === 'user') ? 'Medical Profile' : 'Account Settings'}
                     </Link>
                     <button
                       onClick={() => {
