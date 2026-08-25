@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     gemini_embedding_model: str = "text-embedding-001"
     gemini_embedding_dimension: int = 768
     gemini_max_tokens: int = 8192
-    gemini_temperature: float = 0.7
+    gemini_temperature: float = 1.0
 
     # ── Groq Fallback ─────────────────────────────────────────────────────────
     groq_api_key: str = ""
