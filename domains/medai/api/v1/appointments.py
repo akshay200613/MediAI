@@ -94,6 +94,36 @@ async def list_appointments(
     return await svc.list_appointments(page=page, page_size=page_size)
 
 
+@router.get("/booked-slots", response_model=DataResponse[list[str]], summary="Get booked time slots for a doctor on a specific date")
+async def get_booked_slots(
+    doctor_id: uuid.UUID = Query(...),
+    date: str = Query(..., description="YYYY-MM-DD"),
+    session: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_permission(Permission.VIEW_APPOINTMENT)),
+) -> DataResponse[list[str]]:
+    """Returns a list of scheduled_at datetimes (ISO format) that are already booked for the given doctor and date."""
+    from sqlalchemy import select
+    from domains.medai.models.appointment import Appointment, AppointmentStatus
+    from datetime import datetime, timedelta
+
+    try:
+        start_dt = datetime.strptime(date, "%Y-%m-%d")
+        end_dt = start_dt + timedelta(days=1)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    query = select(Appointment.scheduled_at).where(
+        Appointment.doctor_id == str(doctor_id),
+        Appointment.scheduled_at >= start_dt,
+        Appointment.scheduled_at < end_dt,
+        Appointment.status != AppointmentStatus.CANCELLED,
+        Appointment.is_deleted == False,
+    )
+    res = await session.execute(query)
+    slots = [dt.isoformat() if hasattr(dt, 'isoformat') else str(dt) for dt in res.scalars()]
+    return DataResponse(data=slots)
+
+
 @router.get("/{appt_id}", response_model=DataResponse[AppointmentOut], summary="Get appointment")
 async def get_appointment(
     appt_id: uuid.UUID,
