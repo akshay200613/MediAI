@@ -9,12 +9,13 @@ import logging
 from typing import AsyncIterator
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database.session import get_db
+from core.database.base import AsyncSessionLocal
 from core.auth.dependencies import get_current_user, CurrentUser
 from core.auth.permissions import require_permission, Permission
 from core.schemas.base import DataResponse
@@ -46,37 +47,13 @@ def has_patient_details(message: str) -> bool:
     message_lower = message.lower()
     return any(keyword in message_lower for keyword in keywords)
 
-async def extract_and_update_patient(user_message: str, user_id: str, email: str, session: AsyncSession) -> dict:
+async def extract_and_update_patient(user_message: str, user_id: str, email: str) -> None:
     """
-    Extract patient details from user message and update patient record.
-    Returns a dict of updated fields.
+    Background task: Extract patient details from user message and update patient record.
+    Uses its own isolated DB session to prevent conflicts and ensure the main request is not blocked.
     """
     if not has_patient_details(user_message):
-        return {}
-
-    # Get or create patient record
-    pat_res = await session.execute(
-        select(Patient).where(
-            (Patient.email == email) | (Patient.user_id == str(user_id)),
-            Patient.is_deleted == False
-        )
-    )
-    pat = pat_res.scalar_one_or_none()
-    
-    if not pat:
-        user_res = await session.execute(select(User).where(User.id == uuid.UUID(user_id)))
-        user = user_res.scalar_one_or_none()
-        full_name = user.full_name if user else email
-        parts = full_name.split(" ", 1)
-        pat = Patient(
-            user_id=str(user_id),
-            first_name=parts[0],
-            last_name=parts[1] if len(parts) > 1 else "",
-            email=email,
-            phone="000-000-0000",
-        )
-        session.add(pat)
-        await session.flush()
+        return
 
     prompt = f"""
     You are a precise data extractor. Analyze the user's message and extract any patient personal details.
@@ -99,73 +76,96 @@ async def extract_and_update_patient(user_message: str, user_id: str, email: str
     
     If no fields are found, return an empty JSON object {{}}.
     """
-    
-    try:
-        llm = get_llm_client()
-        response = await llm.generate(
-            messages=[Message(role="user", content=prompt)],
-            temperature=1.0,
-            max_tokens=500,
-        )
-        content = response.content.strip()
-        
-        # Clean markdown codeblocks if LLM outputs them
-        if content.startswith("```"):
-            lines = content.splitlines()
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            content = "\n".join(lines).strip()
-            
-        data = json.loads(content)
-        
-        updated_fields = {}
-        if not isinstance(data, dict):
-            return updated_fields
 
-        # Apply updates to pat
-        if "date_of_birth" in data and data["date_of_birth"]:
-            try:
-                pat.date_of_birth = date.fromisoformat(data["date_of_birth"].split("T")[0])
-                updated_fields["date_of_birth"] = data["date_of_birth"]
-            except Exception:
-                pass
-        if "gender" in data and data["gender"]:
-            normalized_gender = data["gender"].lower().strip()
-            if normalized_gender in ("male", "female", "other"):
-                pat.gender = normalized_gender
-                updated_fields["gender"] = normalized_gender
-        if "blood_group" in data and data["blood_group"]:
-            pat.blood_group = data["blood_group"]
-            updated_fields["blood_group"] = data["blood_group"]
-        if "address" in data and data["address"]:
-            pat.address = data["address"]
-            updated_fields["address"] = data["address"]
-        if "city" in data and data["city"]:
-            pat.city = data["city"]
-            updated_fields["city"] = data["city"]
-        if "state" in data and data["state"]:
-            pat.state = data["state"]
-            updated_fields["state"] = data["state"]
-        if "emergency_contact_name" in data and data["emergency_contact_name"]:
-            pat.emergency_contact_name = data["emergency_contact_name"]
-            updated_fields["emergency_contact_name"] = data["emergency_contact_name"]
-        if "emergency_contact_phone" in data and data["emergency_contact_phone"]:
-            pat.emergency_contact_phone = data["emergency_contact_phone"]
-            updated_fields["emergency_contact_phone"] = data["emergency_contact_phone"]
-
-        if updated_fields:
-            await session.commit()
-            logger.info(f"Updated patient {pat.id} details via chatbot: {updated_fields}")
+    async with AsyncSessionLocal() as session:
+        try:
+            # 1. Get LLM extraction
+            llm = get_llm_client()
+            response = await llm.generate(
+                messages=[Message(role="user", content=prompt)],
+                temperature=1.0,
+                max_tokens=500,
+            )
+            content = response.content.strip()
             
-        return updated_fields
-    except AIServiceUnavailableError as exc:
-        logger.warning(f"AI service unavailable during patient extraction: {exc}")
-        return {}
-    except Exception as exc:
-        logger.error(f"Failed to extract patient info from message: {exc}")
-        return {}
+            # Clean markdown codeblocks if LLM outputs them
+            if content.startswith("```"):
+                lines = content.splitlines()
+                if lines and lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                content = "\n".join(lines).strip()
+                
+            data = json.loads(content)
+            
+            updated_fields = {}
+            if not isinstance(data, dict) or not data:
+                return
+
+            # 2. Update patient record
+            pat_res = await session.execute(
+                select(Patient).where(
+                    (Patient.email == email) | (Patient.user_id == str(user_id)),
+                    Patient.is_deleted == False
+                )
+            )
+            pat = pat_res.scalar_one_or_none()
+            
+            if not pat:
+                user_res = await session.execute(select(User).where(User.id == uuid.UUID(user_id)))
+                user = user_res.scalar_one_or_none()
+                full_name = user.full_name if user else email
+                parts = full_name.split(" ", 1)
+                pat = Patient(
+                    user_id=str(user_id),
+                    first_name=parts[0],
+                    last_name=parts[1] if len(parts) > 1 else "",
+                    email=email,
+                    phone="000-000-0000",
+                )
+                session.add(pat)
+                await session.flush()
+
+            if "date_of_birth" in data and data["date_of_birth"]:
+                try:
+                    pat.date_of_birth = date.fromisoformat(data["date_of_birth"].split("T")[0])
+                    updated_fields["date_of_birth"] = data["date_of_birth"]
+                except Exception:
+                    pass
+            if "gender" in data and data["gender"]:
+                normalized_gender = data["gender"].lower().strip()
+                if normalized_gender in ("male", "female", "other"):
+                    pat.gender = normalized_gender
+                    updated_fields["gender"] = normalized_gender
+            if "blood_group" in data and data["blood_group"]:
+                pat.blood_group = data["blood_group"]
+                updated_fields["blood_group"] = data["blood_group"]
+            if "address" in data and data["address"]:
+                pat.address = data["address"]
+                updated_fields["address"] = data["address"]
+            if "city" in data and data["city"]:
+                pat.city = data["city"]
+                updated_fields["city"] = data["city"]
+            if "state" in data and data["state"]:
+                pat.state = data["state"]
+                updated_fields["state"] = data["state"]
+            if "emergency_contact_name" in data and data["emergency_contact_name"]:
+                pat.emergency_contact_name = data["emergency_contact_name"]
+                updated_fields["emergency_contact_name"] = data["emergency_contact_name"]
+            if "emergency_contact_phone" in data and data["emergency_contact_phone"]:
+                pat.emergency_contact_phone = data["emergency_contact_phone"]
+                updated_fields["emergency_contact_phone"] = data["emergency_contact_phone"]
+
+            if updated_fields:
+                await session.commit()
+                logger.info(f"Updated patient {pat.id} details via chatbot: {updated_fields}")
+                
+        except AIServiceUnavailableError as exc:
+            logger.warning(f"AI service unavailable during patient extraction: {exc}")
+        except Exception as exc:
+            await session.rollback()
+            logger.error(f"Failed to extract patient info from message: {exc}")
 
 
 @router.post(
@@ -175,6 +175,7 @@ async def extract_and_update_patient(user_message: str, user_id: str, email: str
 )
 async def chat(
     message: ChatMessage,
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(require_permission(Permission.USE_AI_CHAT)),
     session: AsyncSession = Depends(get_db),
 ) -> DataResponse[ChatResponse]:
@@ -229,11 +230,11 @@ async def chat(
     patient_name = current_user.full_name
 
     if current_user.role in ("patient", "user"):
-        updated_fields = await extract_and_update_patient(
+        background_tasks.add_task(
+            extract_and_update_patient,
             user_message=message.content,
             user_id=current_user.user_id,
             email=current_user.email,
-            session=session,
         )
         
         # Check missing fields
@@ -261,9 +262,15 @@ async def chat(
 
     from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
     from core.ai.graph.builder import build_medai_graph
+    from datetime import datetime
 
     # Map history to Langchain messages
     langchain_messages = []
+    
+    # Inject current date context
+    current_date = datetime.now().strftime("%A, %B %d, %Y %H:%M")
+    langchain_messages.append(SystemMessage(content=f"[System Note: Current date and time is {current_date}. Use this to resolve relative dates like 'tomorrow'.]"))
+
     
     # Inject long-term memory summary as a system message
     if long_term_memory:

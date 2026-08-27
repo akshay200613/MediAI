@@ -10,12 +10,19 @@ Provides:
 - test_app         FastAPI app with lifespan bypassed
 - async_client     httpx.AsyncClient wired to the test app + mock DB
 """
+# NOTE: asyncio_mode = "auto" is set in pyproject.toml [tool.pytest.ini_options].
+# All async fixtures and tests are collected automatically without needing
+# @pytest.mark.asyncio on every function.
 
 import uuid
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import warnings
+
+# Suppress pytest-asyncio legacy-mode deprecation noise
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pytest_asyncio")
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
@@ -133,13 +140,15 @@ def test_app() -> FastAPI:
 
 
 @pytest.fixture
-async def async_client(test_app: FastAPI, mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:
+async def async_client(test_app: FastAPI, mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:  # noqa: RUF029
     """
     AsyncClient bound to test app.
     The real `get_db` dependency is overridden with the mock session so that
     no real database connection is required.
+
+    Each test gets a fresh override so that mock_session can be reset per-test.
     """
-    async def _override_get_db():
+    async def _override_get_db() -> AsyncGenerator:
         yield mock_session
 
     test_app.dependency_overrides[get_db] = _override_get_db

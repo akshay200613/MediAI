@@ -15,12 +15,15 @@ import {
 } from 'lucide-react'
 import type { ChatMessage, Citation } from '@/types/chat'
 
+import { ActionCards } from './ActionCards'
+
 interface ChatMessagesProps {
   messages: ChatMessage[]
   isGenerating?: boolean
   userName?: string
   onSelectCitation?: (citationId: string, citations: Citation[]) => void
   onRetryMessage?: (messageContent: string) => void
+  onActionSelected?: (messageContent: string) => void
 }
 
 export const ChatMessages: React.FC<ChatMessagesProps> = ({
@@ -29,6 +32,7 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
   userName,
   onSelectCitation,
   onRetryMessage,
+  onActionSelected,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -172,8 +176,28 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
                     </div>
                   )}
 
-                  {/* Render Text Content */}
-                  {renderMarkdown(msg.content)}
+                  {/* Render Text Content & Action Cards */}
+                  {(() => {
+                    const jsonMatch = msg.content.match(/```json\n([\s\S]*?)\n```/);
+                    let actionData = null;
+                    let textContent = msg.content;
+                    if (jsonMatch) {
+                      try {
+                        actionData = JSON.parse(jsonMatch[1]);
+                        textContent = textContent.replace(jsonMatch[0], '');
+                      } catch (e) {
+                        // Ignore parse errors, treat as regular text
+                      }
+                    }
+                    return (
+                      <>
+                        {renderMarkdown(textContent)}
+                        {actionData && (
+                          <ActionCards actionData={actionData} onAction={(m) => onActionSelected?.(m)} />
+                        )}
+                      </>
+                    )
+                  })()}
 
                   {/* Streaming Pulse Cursor */}
                   {msg.isStreaming && (

@@ -10,6 +10,7 @@ from core.ai.rag.pipeline import RAGPipeline
 from core.ai.llm.litellm_client import get_llm_client
 from core.config.settings import settings
 from core.config.logging import get_logger
+from core.metrics import rag_queries_total, rag_ingest_total, rag_chunks_indexed
 
 logger = get_logger("medai.rag_api")
 router = APIRouter()
@@ -72,11 +73,17 @@ async def ingest_document(
     # Ingest into RAG pipeline
     source_id = str(uuid.uuid4())
     pipeline = get_rag_pipeline()
-    chunks_indexed = await pipeline.ingest(
-        text=text,
-        metadata={"title": title, "category": category, "filename": file.filename},
-        source_id=source_id,
-    )
+    try:
+        chunks_indexed = await pipeline.ingest(
+            text=text,
+            metadata={"title": title, "category": category, "filename": file.filename},
+            source_id=source_id,
+        )
+        rag_ingest_total.labels(outcome="success").inc()
+        rag_chunks_indexed.observe(chunks_indexed)
+    except Exception as e:
+        rag_ingest_total.labels(outcome="error").inc()
+        raise
 
     logger.info("Document ingested", title=title, chunks=chunks_indexed)
     return DataResponse(
@@ -100,6 +107,7 @@ async def query_knowledge_base(
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
+    rag_queries_total.labels(role=_.role).inc()
     pipeline = get_rag_pipeline()
     result = await pipeline.query(user_query=query, top_k=top_k)
 

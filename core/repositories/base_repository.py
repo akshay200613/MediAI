@@ -75,8 +75,12 @@ class BaseRepository(Generic[ModelType]):
         # Pagination
         stmt = stmt.offset(offset).limit(limit)
 
-        items_result = await self.session.execute(stmt)
-        count_result = await self.session.execute(count_stmt)
+        import asyncio
+
+        items_result, count_result = await asyncio.gather(
+            self.session.execute(stmt),
+            self.session.execute(count_stmt)
+        )
 
         return list(items_result.scalars().all()), count_result.scalar_one()
 

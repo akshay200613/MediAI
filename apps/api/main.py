@@ -6,8 +6,9 @@ Wires together middleware, routers, domain registries, and lifespan events.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, ORJSONResponse
 
 from core.config.settings import settings
 from core.config.logging import configure_logging, get_logger
@@ -15,6 +16,8 @@ from core.database.base import engine, Base
 from core.database.redis_client import get_redis_pool, close_redis_pool
 from core.database.qdrant_client import close_qdrant_client
 from core.api.v1.router import core_v1_router
+from core.metrics import create_instrumentator, app_info
+from core.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
 
 # ── Domain Registries ─────────────────────────────────────────────────────────
 from domains.medai.registry import register as register_medai
@@ -30,8 +33,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging()
     logger.info("Starting MedAI", version=settings.app_version, env=settings.environment)
 
+    # Publish app metadata to Prometheus info metric
+    app_info.info({
+        "version": settings.app_version,
+        "environment": settings.environment,
+        "app_name": settings.app_name,
+    })
+
     # Inject provider API keys into os.environ so litellm can find them
-    # regardless of which call path (Router, ChatLiteLLM, direct acompletion) is used.
     if settings.gemini_api_key:
         os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
         os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
@@ -62,11 +71,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("MedAI shutdown complete")
 
 
-from core.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-
 def create_app() -> FastAPI:
     """Application factory."""
     app = FastAPI(
@@ -76,6 +80,7 @@ def create_app() -> FastAPI:
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
         lifespan=lifespan,
+        default_response_class=ORJSONResponse,
     )
 
     # ── Security & CORS Middleware ────────────────────────────────────────────
@@ -117,9 +122,19 @@ def create_app() -> FastAPI:
     # ── Domain Registration ───────────────────────────────────────────────────
     register_medai(app)
 
+    # ── Prometheus Metrics ────────────────────────────────────────────────────
+    # Instrument AFTER all routers are registered so all routes are captured.
+    # Exposes GET /metrics in Prometheus text format.
+    instrumentator = create_instrumentator()
+    instrumentator.instrument(app).expose(
+        app,
+        endpoint="/metrics",
+        include_in_schema=False,
+        tags=["Monitoring"],
+    )
+
     logger.info("Application factory complete")
     return app
-
 
 
 app = create_app()

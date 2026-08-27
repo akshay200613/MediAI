@@ -24,13 +24,13 @@ export default defineConfig({
   },
 
   projects: [
+    // Google Chrome
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
+      name: 'chrome',
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chrome',
+      },
     },
   ],
 

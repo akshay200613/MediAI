@@ -1,0 +1,209 @@
+{
+  "id": null,
+  "uid": "medai-overview",
+  "title": "MedAI — System Overview",
+  "description": "Real-time monitoring of the MedAI backend: HTTP traffic, AI chat, appointments, RAG, and WebSocket connections.",
+  "tags": ["medai", "fastapi", "prometheus"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "15s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "type": "stat",
+      "title": "Total Requests (1h)",
+      "datasource": "Prometheus",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "blue", "value": null }] }, "unit": "short" }
+      },
+      "targets": [{ "expr": "sum(increase(medai_http_requests_total[1h]))", "legendFormat": "Requests" }]
+    },
+    {
+      "id": 2,
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "type": "stat",
+      "title": "Error Rate (5xx)",
+      "datasource": "Prometheus",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "percentunit",
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] }
+        }
+      },
+      "targets": [{
+        "expr": "sum(rate(medai_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(medai_http_requests_total[5m]))",
+        "legendFormat": "5xx rate"
+      }]
+    },
+    {
+      "id": 3,
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "type": "stat",
+      "title": "Active WebSocket Connections",
+      "datasource": "Prometheus",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "short",
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 200 }] }
+        }
+      },
+      "targets": [{ "expr": "sum(medai_websocket_connections_active)", "legendFormat": "Active connections" }]
+    },
+    {
+      "id": 4,
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "type": "stat",
+      "title": "Chat Requests (1h)",
+      "datasource": "Prometheus",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "short",
+          "thresholds": { "steps": [{ "color": "purple", "value": null }] }
+        }
+      },
+      "targets": [{ "expr": "sum(increase(medai_chat_requests_total[1h]))", "legendFormat": "Chat requests" }]
+    },
+    {
+      "id": 5,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "type": "stat",
+      "title": "Appointments Booked (24h)",
+      "datasource": "Prometheus",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "short",
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "targets": [{ "expr": "sum(increase(medai_appointment_bookings_total{outcome=\"success\"}[24h]))", "legendFormat": "Booked" }]
+    },
+    {
+      "id": 6,
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "type": "stat",
+      "title": "Double-booking Conflicts (24h)",
+      "datasource": "Prometheus",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "short",
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] }
+        }
+      },
+      "targets": [{ "expr": "sum(increase(medai_appointment_bookings_total{outcome=\"conflict\"}[24h]))", "legendFormat": "Conflicts" }]
+    },
+    {
+      "id": 7,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "type": "timeseries",
+      "title": "HTTP Request Rate by Status",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum by(status) (rate(medai_http_requests_total[1m]))", "legendFormat": "{{status}}" }
+      ]
+    },
+    {
+      "id": 8,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "type": "timeseries",
+      "title": "HTTP Latency Percentiles (p50 / p95 / p99)",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2 } } },
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by(le) (rate(medai_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by(le) (rate(medai_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by(le) (rate(medai_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 9,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "type": "timeseries",
+      "title": "AI Chat Requests by Role",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } } },
+      "targets": [
+        { "expr": "sum by(role) (rate(medai_chat_requests_total[5m]))", "legendFormat": "{{role}}" }
+      ]
+    },
+    {
+      "id": 10,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "type": "timeseries",
+      "title": "AI Chat Latency p95",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2 } } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by(le) (rate(medai_chat_latency_seconds_bucket[5m])))", "legendFormat": "p95 chat latency" }
+      ]
+    },
+    {
+      "id": 11,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "type": "timeseries",
+      "title": "Appointment Bookings (success vs conflict)",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } } },
+      "targets": [
+        { "expr": "sum by(outcome) (rate(medai_appointment_bookings_total[5m]))", "legendFormat": "{{outcome}}" }
+      ]
+    },
+    {
+      "id": 12,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "type": "timeseries",
+      "title": "RAG Queries by Role",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } } },
+      "targets": [
+        { "expr": "sum by(role) (rate(medai_rag_queries_total[5m]))", "legendFormat": "{{role}}" }
+      ]
+    },
+    {
+      "id": 13,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "type": "timeseries",
+      "title": "WebSocket Connections by Role",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
+      "targets": [
+        { "expr": "medai_websocket_connections_active", "legendFormat": "{{role}}" }
+      ]
+    },
+    {
+      "id": 14,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "type": "timeseries",
+      "title": "AI Chat Errors (503s)",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 },
+        "color": { "fixedColor": "red", "mode": "fixed" } }
+      },
+      "targets": [
+        { "expr": "sum by(error_type) (rate(medai_chat_errors_total[5m]))", "legendFormat": "{{error_type}}" }
+      ]
+    },
+    {
+      "id": 15,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 36 },
+      "type": "table",
+      "title": "Top Slowest Endpoints (p95 latency)",
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "options": { "sortBy": [{ "desc": true, "displayName": "p95" }] },
+      "targets": [{
+        "expr": "topk(10, histogram_quantile(0.95, sum by(handler, le) (rate(medai_http_request_duration_seconds_bucket[5m]))))",
+        "legendFormat": "{{handler}}",
+        "instant": true
+      }]
+    }
+  ]
+}

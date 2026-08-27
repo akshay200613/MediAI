@@ -112,6 +112,7 @@ export default function AIChatPage() {
               isGenerating={isGenerating}
               userName={displayName}
               onRetryMessage={(prompt) => sendMessage(prompt)}
+              onActionSelected={(prompt) => sendMessage(prompt)}
             />
           )}
         </div>

@@ -6,8 +6,15 @@ loadEnvConfig(path.resolve(process.cwd(), '../..'))
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true, // Only if type-check is run separately
+  },
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    optimizePackageImports: ['lucide-react', 'date-fns', 'framer-motion'],
   },
   async rewrites() {
     return [

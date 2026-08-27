@@ -53,7 +53,7 @@ class Patient(AuditableModel):
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Platform link
-    user_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    user_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True, index=True)
 
     @property
     def full_name(self) -> str:

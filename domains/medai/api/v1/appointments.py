@@ -8,6 +8,7 @@ from core.auth.permissions import require_permission, Permission
 from core.schemas.base import DataResponse, PaginatedResponse
 from domains.medai.schemas.appointment import AppointmentCreate, AppointmentOut, AppointmentUpdate
 from domains.medai.services.appointment_service import AppointmentService
+from core.metrics import appointment_bookings_total, appointment_cancellations_total
 
 router = APIRouter()
 
@@ -35,6 +36,7 @@ async def book_appointment(
     res = await session.execute(query)
     existing = res.scalar_one_or_none()
     if existing:
+        appointment_bookings_total.labels(outcome="conflict").inc()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Double booking error: Doctor already has an active appointment at this selected time slot.",
@@ -42,6 +44,7 @@ async def book_appointment(
 
     svc = AppointmentService(session)
     appt = await svc.create_appointment(data)
+    appointment_bookings_total.labels(outcome="success").inc()
 
     # Broadcast real-time WebSocket event
     from domains.medai.websockets.manager import manager

@@ -57,6 +57,9 @@ dependencies = [
   "langgraph>=1.2.11",
   "langchain-litellm>=0.7.0",
   "fastmcp>=3.4.7",
+  # Monitoring
+  "prometheus-client>=0.20.0",
+  "prometheus-fastapi-instrumentator>=7.0.0",
 ]
 
 [project.optional-dependencies]

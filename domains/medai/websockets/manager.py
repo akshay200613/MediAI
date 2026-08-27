@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Any
 from fastapi import WebSocket
 from core.config.logging import get_logger
+from core.metrics import ws_connections_active
 
 logger = get_logger("medai.websockets.manager")
 
@@ -52,6 +53,7 @@ class ConnectionManager:
         if doctor_id:
             self.doctor_sockets[doctor_id].add(socket_id)
 
+        ws_connections_active.labels(role=role).inc()
         logger.info(
             "WebSocket connected",
             socket_id=socket_id,
@@ -82,6 +84,8 @@ class ConnectionManager:
             if doctor_id and socket_id in self.doctor_sockets.get(doctor_id, set()):
                 self.doctor_sockets[doctor_id].remove(socket_id)
 
+            if role:
+                ws_connections_active.labels(role=role).dec()
             logger.info("WebSocket disconnected", socket_id=socket_id, user_id=user_id)
 
     async def broadcast_event(self, payload: dict[str, Any], socket_ids: set[str]) -> None:
@@ -135,7 +139,7 @@ class ConnectionManager:
 
         logger.info(
             "Broadcasting appointment event",
-            event=event_type,
+            event_type=event_type,
             recipient_sockets_count=len(target_sockets),
             patient_id=patient_id,
             doctor_id=doctor_id,

@@ -54,9 +54,9 @@ test.describe('Login Page', () => {
     await submitBtn.click()
 
     // Should show an error (either toast, alert, or error text)
-    const errorIndicator = page.locator(
-      '[role="alert"], .error, [class*="error"], [class*="toast"], text=/invalid|incorrect|wrong|failed/i'
-    )
+    const cssBased = page.locator('[role="alert"], .error, [class*="error"], [class*="toast"]')
+    const textBased = page.getByText(/invalid|incorrect|wrong|failed/i)
+    const errorIndicator = cssBased.or(textBased)
     await expect(errorIndicator.first()).toBeVisible({ timeout: 10_000 })
   })
 })
