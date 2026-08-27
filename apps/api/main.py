@@ -63,11 +63,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     get_redis_pool()
     logger.info("Redis pool initialized")
 
+    # Start Background Appointment Reminder Scheduler
+    from domains.medai.services.reminder_scheduler import reminder_scheduler
+    reminder_scheduler.start()
+
     logger.info("MedAI startup complete")
     yield
 
     # Shutdown
     logger.info("Shutting down MedAI")
+    await reminder_scheduler.stop()
     await close_redis_pool()
     await close_qdrant_client()
     await engine.dispose()

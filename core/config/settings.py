@@ -77,6 +77,16 @@ class Settings(BaseSettings):
     admin_password: str = ""
     admin_full_name: str = "MediAI Admin"
 
+    # ── Email / SMTP ─────────────────────────────────────────────────────────
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "MediAI Healthcare"
+    smtp_tls: bool = True
+    emails_enabled: bool = False
+
     # ── Google AI / Gemini (Embeddings & Fallback) ─────────────────────────────
     gemini_api_key: str = ""
     gemini_embedding_model: str = "text-embedding-001"

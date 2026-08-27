@@ -34,7 +34,7 @@ from core.database.session import get_db
 
 def _make_token(role: str, user_id: str | None = None, email: str | None = None) -> str:
     uid = user_id or str(uuid.uuid4())
-    mail = email or f"{role}@medai.test"
+    mail = email or f"{role}@gmail.com"
     return create_access_token({"sub": uid, "email": mail, "role": role})
 
 
@@ -55,17 +55,17 @@ def patient_user_id() -> str:
 
 @pytest.fixture(scope="session")
 def admin_token(admin_user_id: str) -> str:
-    return _make_token("admin", user_id=admin_user_id, email="admin@medai.test")
+    return _make_token("admin", user_id=admin_user_id, email="admin@gmail.com")
 
 
 @pytest.fixture(scope="session")
 def doctor_token(doctor_user_id: str) -> str:
-    return _make_token("doctor", user_id=doctor_user_id, email="doctor@medai.test")
+    return _make_token("doctor", user_id=doctor_user_id, email="doctor@gmail.com")
 
 
 @pytest.fixture(scope="session")
 def patient_token(patient_user_id: str) -> str:
-    return _make_token("patient", user_id=patient_user_id, email="patient@medai.test")
+    return _make_token("patient", user_id=patient_user_id, email="patient@gmail.com")
 
 
 @pytest.fixture(scope="session")

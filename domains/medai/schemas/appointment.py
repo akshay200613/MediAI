@@ -23,6 +23,9 @@ class AppointmentUpdate(BaseSchema):
     duration_minutes: Optional[int] = None
     reason: Optional[str] = None
     notes: Optional[str] = None
+    confirmation_email_sent: Optional[bool] = None
+    reminder_email_sent: Optional[bool] = None
+    reminder_sent_at: Optional[datetime] = None
 
 
 class AppointmentOut(TimestampSchema):
@@ -35,4 +38,7 @@ class AppointmentOut(TimestampSchema):
     reason: Optional[str] = None
     notes: Optional[str] = None
     ai_triage_summary: Optional[str] = None
+    confirmation_email_sent: bool = False
+    reminder_email_sent: bool = False
+    reminder_sent_at: Optional[datetime] = None
     is_deleted: bool = False

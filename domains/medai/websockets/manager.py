@@ -121,8 +121,15 @@ class ConnectionManager:
             "data": appointment_data,
         }
 
-        # Broadcast to all active WebSocket connections across Patient, Doctor, and Admin portals
-        target_sockets = set(self.active_connections.keys())
+        # Notify admins, super_admins, target patient, and target doctor
+        target_sockets: set[str] = set()
+        target_sockets.update(self.role_sockets.get("admin", set()))
+        target_sockets.update(self.role_sockets.get("super_admin", set()))
+        if patient_id and str(patient_id) in self.patient_sockets:
+            target_sockets.update(self.patient_sockets[str(patient_id)])
+        if doctor_id and str(doctor_id) in self.doctor_sockets:
+            target_sockets.update(self.doctor_sockets[str(doctor_id)])
+
         await self.broadcast_event(payload, target_sockets)
 
     async def notify_doctor_updated(

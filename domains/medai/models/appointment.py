@@ -5,7 +5,7 @@ Appointment model – MedAI domain.
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,6 +49,11 @@ class Appointment(AuditableModel):
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_triage_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Email notifications & reminder tracking
+    confirmation_email_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reminder_email_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         return f"<Appointment id={self.id} status={self.status} at={self.scheduled_at}>"
