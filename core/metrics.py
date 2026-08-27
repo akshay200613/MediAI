@@ -28,26 +28,6 @@ ws_connections_active = Gauge(
     ["role"],
 )
 
-# ── AI Chat ───────────────────────────────────────────────────────────────────
-
-chat_requests_total = Counter(
-    "medai_chat_requests_total",
-    "Total number of AI chat requests",
-    ["role", "path_type"],  # path_type: small_talk | medical_query
-)
-
-chat_errors_total = Counter(
-    "medai_chat_errors_total",
-    "Total number of AI chat errors (503s)",
-    ["error_type"],  # ai_unavailable | graph_exception
-)
-
-chat_latency_seconds = Histogram(
-    "medai_chat_latency_seconds",
-    "End-to-end latency of AI chat requests (seconds)",
-    buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
-)
-
 # ── Appointments ──────────────────────────────────────────────────────────────
 
 appointment_bookings_total = Counter(
@@ -63,12 +43,6 @@ appointment_cancellations_total = Counter(
 )
 
 # ── RAG Pipeline ──────────────────────────────────────────────────────────────
-
-rag_queries_total = Counter(
-    "medai_rag_queries_total",
-    "Total RAG knowledge base queries",
-    ["role"],
-)
 
 rag_ingest_total = Counter(
     "medai_rag_ingest_total",
@@ -89,6 +63,22 @@ auth_login_total = Counter(
     "Total login attempts",
     ["outcome"],  # success | wrong_password | unknown_user | disabled
 )
+
+
+def init_metrics() -> None:
+    """Initialize custom metric series with default values so Prometheus exposes them immediately on startup."""
+    for role in ("patient", "doctor", "admin", "user"):
+        ws_connections_active.labels(role=role).set(0)
+        appointment_cancellations_total.labels(role=role).inc(0)
+
+    for outcome in ("success", "conflict", "error"):
+        appointment_bookings_total.labels(outcome=outcome).inc(0)
+
+    for outcome in ("success", "wrong_password", "unknown_user", "disabled"):
+        auth_login_total.labels(outcome=outcome).inc(0)
+
+    for outcome in ("success", "error"):
+        rag_ingest_total.labels(outcome=outcome).inc(0)
 
 
 # ── Instrumentator Factory ────────────────────────────────────────────────────
@@ -123,3 +113,4 @@ def create_instrumentator() -> Instrumentator:
     )
 
     return instrumentator
+

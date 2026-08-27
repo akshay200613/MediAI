@@ -16,9 +16,13 @@ from core.models.user import User
 from domains.medai.models.doctor import Doctor
 from domains.medai.models.patient import Patient
 from core.repositories.base_repository import BaseRepository
-from core.auth.dependencies import CurrentUser, get_current_user
+from core.auth.dependencies import CurrentUser, get_current_user, require_roles
+from core.metrics import auth_login_total
 
 router = APIRouter()
+
+# Global tracking set for pending password reset requests requiring Admin approval
+PENDING_PASSWORD_RESET_USER_IDS: set[str] = set()
 
 
 class UserRepository(BaseRepository[User]):
@@ -33,18 +37,35 @@ async def login(
     repo = UserRepository(session)
     user = await repo.get_by_field("email", credentials.email)
 
-    if not user or not verify_password(credentials.password, user.hashed_password):
+    if not user:
+        auth_login_total.labels(outcome="unknown_user").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    # Check if user has a pending password reset request requiring admin approval
+    if str(user.id) in PENDING_PASSWORD_RESET_USER_IDS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your password reset request is pending Admin approval. You will be able to log in once Admin approves and sets your new password.",
+        )
+
+    if not verify_password(credentials.password, user.hashed_password):
+        auth_login_total.labels(outcome="wrong_password").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
     if not user.is_active:
+        auth_login_total.labels(outcome="disabled").inc()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is disabled",
         )
 
+    auth_login_total.labels(outcome="success").inc()
     access_token, refresh_token = create_token_pair(
         str(user.id), user.email, user.role, user.full_name
     )
@@ -626,3 +647,125 @@ async def change_password(
     await session.commit()
 
     return DataResponse(data={"success": True}, message="Password updated successfully")
+
+
+@router.post("/forgot-password", response_model=DataResponse[dict], summary="Request password reset — notifies admin")
+async def forgot_password(
+    body: dict,
+    session: AsyncSession = Depends(get_db),
+) -> DataResponse[dict]:
+    """Notify administrator that user/doctor has requested a password reset and locks login until Admin approves."""
+    from domains.medai.websockets.manager import manager
+
+    email = (body.get("email") or "").strip().lower()
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Email address is required")
+
+    repo = UserRepository(session)
+    user = await repo.get_by_field("email", email)
+    if not user:
+        return DataResponse(
+            data={"email": email, "status": "submitted"},
+            message="Password reset request submitted. Admin has been notified to assist with credential reset."
+        )
+
+    # Mark password reset request as pending admin approval
+    PENDING_PASSWORD_RESET_USER_IDS.add(str(user.id))
+
+    # Broadcast real-time alert to all online Admins via WebSockets
+    try:
+        await manager.notify_admin_password_reset_request(
+            user_id=str(user.id),
+            email=user.email,
+            full_name=user.full_name,
+        )
+    except Exception:
+        pass
+
+    return DataResponse(
+        data={"email": user.email, "user_id": str(user.id), "status": "pending_admin_approval"},
+        message="Password reset request submitted to Admin! Admin has been notified to approve your request and set your new password."
+    )
+
+
+@router.get("/pending-password-resets", response_model=DataResponse[list[dict]], summary="List pending password reset requests for admin")
+async def list_pending_password_resets(
+    session: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_roles("admin", "super_admin")),
+) -> DataResponse[list[dict]]:
+    """Return all users/doctors with pending password reset requests."""
+    from uuid import UUID
+    repo = UserRepository(session)
+    pending_list = []
+    for uid in list(PENDING_PASSWORD_RESET_USER_IDS):
+        try:
+            user = await repo.get_by_id(UUID(uid))
+            if user:
+                pending_list.append({
+                    "user_id": str(user.id),
+                    "email": user.email,
+                    "full_name": user.full_name,
+                    "role": user.role,
+                })
+        except Exception:
+            pass
+    return DataResponse(data=pending_list, message="Retrieved pending password reset requests")
+
+
+@router.post("/admin-reset-password", response_model=DataResponse[dict], summary="Admin approve & reset doctor/user password")
+async def admin_reset_password(
+    body: dict,
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_roles("admin", "super_admin")),
+) -> DataResponse[dict]:
+    """Admin endpoint to approve password reset request and set new password for doctor/user."""
+    from uuid import UUID
+    from domains.medai.websockets.manager import manager
+
+    user_id = (body.get("user_id") or "").strip()
+    email = (body.get("email") or "").strip().lower()
+    new_password = (body.get("new_password") or "").strip()
+
+    if not new_password or len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters long")
+
+    repo = UserRepository(session)
+    user = None
+    if user_id:
+        try:
+            user = await repo.get_by_id(UUID(user_id))
+        except Exception:
+            pass
+    if not user and email:
+        user = await repo.get_by_field("email", email)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="Target user account not found")
+
+    user.hashed_password = hash_password(new_password)
+    user.is_active = True
+    user.is_verified = True
+
+    # Clear pending password reset status upon admin approval
+    PENDING_PASSWORD_RESET_USER_IDS.discard(str(user.id))
+
+    await session.commit()
+
+    # Notify doctor via WebSocket
+    try:
+        await manager.notify_doctor_updated(
+            doctor_id=str(user.id),
+            doctor_data={"email": user.email},
+            changes_summary=f"Admin ({current_user.full_name or 'System'}) has approved your password reset request and set your new password. You can now sign in.",
+        )
+    except Exception:
+        pass
+
+    return DataResponse(
+        data={"user_id": str(user.id), "email": user.email},
+        message=f"Password reset request approved and new password set for {user.email} by Admin."
+    )
+
+
+

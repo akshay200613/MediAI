@@ -17,9 +17,11 @@ import {
   Users,
   AlertCircle,
   ChevronRight,
+  Bell,
 } from 'lucide-react'
 import apiClient from '@/lib/api/client'
 import { useAuth } from '@/lib/auth/context'
+import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
 
 interface TodayAppointment {
   id: string
@@ -74,9 +76,16 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
 export default function DoctorDashboardPage() {
   const { user } = useAuth()
   const [data, setData] = useState<DashboardData | null>(null)
-  const [allAppointments, setAllAppointments] = useState<any[]>([])
+  const [allAppointments, setAllAppointments] = useState<TodayAppointment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [adminNotice, setAdminNotice] = useState<string | null>(null)
+
+  useAppointmentSocket((event) => {
+    if (event.event === 'doctor_updated') {
+      setAdminNotice(event.message || 'Admin has updated your profile details and working schedule.')
+    }
+  })
 
   useEffect(() => {
     const fetchData = async () => {
@@ -129,6 +138,27 @@ export default function DoctorDashboardPage() {
 
   return (
     <div className="p-6 space-y-6 bg-slate-950 min-h-screen text-slate-100 font-sans">
+      {/* ── Admin Profile Update Alert Banner ── */}
+      {adminNotice && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between shadow-xl animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
+              <Bell className="w-4 h-4 text-amber-400 animate-bounce" />
+            </div>
+            <div>
+              <p className="font-bold text-amber-200">Admin Profile Update Alert</p>
+              <p className="text-[11px] text-amber-300/90 mt-0.5">{adminNotice}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setAdminNotice(null)}
+            className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded-xl font-semibold text-xs transition-colors shrink-0"
+          >
+            Dismiss Alert
+          </button>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <motion.div
         initial={{ opacity: 0, y: -12 }}

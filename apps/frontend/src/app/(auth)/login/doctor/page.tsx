@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth/context'
 import { authApi } from '@/lib/api/auth'
+import apiClient from '@/lib/api/client'
 import { extractErrorMessage } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { springSnappy, easeOutExpo } from '@/lib/motion'
@@ -112,7 +113,7 @@ function PasswordStrength({ value }: { value: string }) {
   )
 }
 
-function DoctorLoginForm({ onRegisterClick }: { onRegisterClick: () => void }) {
+function DoctorLoginForm({ onRegisterClick, onForgotClick }: { onRegisterClick: () => void; onForgotClick: () => void }) {
   const [showPwd, setShowPwd] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const { login } = useAuth()
@@ -144,7 +145,17 @@ function DoctorLoginForm({ onRegisterClick }: { onRegisterClick: () => void }) {
       <Field label="Doctor Email" error={form.formState.errors.email?.message}>
         <input type="email" placeholder="dr.name@hospital.com" {...form.register('email')} className={inputCls} autoComplete="email" />
       </Field>
-      <Field label="Password" error={form.formState.errors.password?.message}>
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-medium text-slate-300">Password</label>
+          <button
+            type="button"
+            onClick={onForgotClick}
+            className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            Forgot password?
+          </button>
+        </div>
         <div className="relative">
           <input type={showPwd ? 'text' : 'password'} placeholder="••••••••"
             {...form.register('password')} className={`${inputCls} pr-12`} autoComplete="current-password" />
@@ -153,7 +164,13 @@ function DoctorLoginForm({ onRegisterClick }: { onRegisterClick: () => void }) {
             {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
-      </Field>
+        {form.formState.errors.password && (
+          <div className="text-[11px] text-rose-400 mt-1 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            <span>{form.formState.errors.password.message}</span>
+          </div>
+        )}
+      </div>
       <button onClick={form.handleSubmit(onSubmit)} disabled={isLoading}
         className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-900/30 flex items-center justify-center gap-2 transition-all disabled:opacity-50">
         {isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Stethoscope className="w-4 h-4" /> Sign In to Doctor Portal</>}
@@ -166,6 +183,83 @@ function DoctorLoginForm({ onRegisterClick }: { onRegisterClick: () => void }) {
         className="w-full h-10 rounded-xl border border-indigo-500/40 hover:border-indigo-500 text-indigo-400 font-semibold text-xs flex items-center justify-center gap-2 transition-all hover:bg-indigo-500/5">
         Register as a Doctor <ArrowRight className="w-3.5 h-3.5" />
       </button>
+    </div>
+  )
+}
+
+function DoctorForgotPasswordWizard({ onBackToLogin }: { onBackToLogin: () => void }) {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+
+  const handleRequestReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email) {
+      toast.error('Please enter your doctor email address.')
+      return
+    }
+    setLoading(true)
+    try {
+      await apiClient.post('/auth/forgot-password', { email })
+      toast.success('Password reset request submitted to Admin!')
+      setSubmitted(true)
+    } catch (err: any) {
+      toast.error(extractErrorMessage(err) || 'Failed to process request.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {!submitted ? (
+        <form onSubmit={handleRequestReset} className="space-y-4">
+          <div className="text-center mb-2">
+            <h3 className="text-base font-bold text-slate-100">Forgot Doctor Password?</h3>
+            <p className="text-xs text-slate-400 mt-1">Enter your registered doctor email address. Requesting a reset will instantly notify Admin to reset your password.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-300">Doctor Email</label>
+            <input
+              type="email"
+              required
+              placeholder="dr.name@hospital.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-900/30 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+          >
+            {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Request Reset from Admin'}
+          </button>
+          <button
+            type="button"
+            onClick={onBackToLogin}
+            className="w-full text-center text-xs text-slate-400 hover:text-slate-200 mt-2 block"
+          >
+            ← Back to Doctor Sign In
+          </button>
+        </form>
+      ) : (
+        <div className="text-center space-y-4 py-4">
+          <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mx-auto">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-100">Reset Request Submitted!</h3>
+          <p className="text-xs text-slate-400">Admin has been notified via real-time alert to reset your credentials. Please contact your system administrator or log in once updated.</p>
+          <button
+            type="button"
+            onClick={onBackToLogin}
+            className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-900/30 transition-colors"
+          >
+            Return to Doctor Sign In
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -415,103 +509,98 @@ function PendingScreen({ onLoginClick }: { onLoginClick: () => void }) {
 }
 
 export default function DoctorLoginPage() {
-  const [view, setView] = useState<'login' | 'register' | 'pending'>('login')
+  const searchParams = useSearchParams()
+  const initialMode = searchParams?.get('mode') === 'register' ? 'register' : 'login'
+  const [view, setView] = useState<'login' | 'register' | 'pending' | 'forgot'>(initialMode)
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-slate-950 text-slate-100 font-sans overflow-x-hidden">
-      {/* Left Visual Panel */}
-      <div className="hidden lg:flex lg:w-[42%] bg-gradient-to-br from-indigo-950 via-slate-950 to-slate-900 flex-col justify-between p-12 relative overflow-hidden border-r border-slate-800/80">
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center">
-            <Activity className="w-5 h-5 text-indigo-400" />
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-between font-sans relative overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row">
+        {/* Left Branding Panel */}
+        <div className="hidden lg:flex flex-1 flex-col justify-between p-12 bg-gradient-to-br from-indigo-950/60 via-slate-900 to-slate-950 border-r border-slate-800 relative">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-900/50">
+              <Stethoscope className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <span className="font-extrabold text-white text-lg tracking-tight">MediAI</span>
+              <span className="text-[10px] uppercase font-bold text-indigo-400 block tracking-widest -mt-1">Clinical Portal</span>
+            </div>
           </div>
-          <div>
-            <span className="text-xl font-extrabold text-white tracking-wide">MedAI</span>
-            <span className="text-[10px] text-indigo-300 block font-medium uppercase tracking-wider">Doctor Portal</span>
+
+          <div className="space-y-6 max-w-md">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold">
+              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" /> Professional Provider Suite
+            </div>
+            <h1 className="text-3xl font-extrabold text-slate-100 tracking-tight leading-tight">
+              Streamline consultations, patient records, & AI diagnostics.
+            </h1>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Empowering healthcare providers with real-time patient history, automated intake summary, and seamless scheduling.
+            </p>
+          </div>
+
+          <div className="text-xs text-slate-500">
+            © MediAI Health Technologies. Encrypted & HIPAA compliant.
           </div>
         </div>
-        <div className="relative z-10 space-y-5 my-auto max-w-sm">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-400/20 text-xs font-semibold text-indigo-300">
-            <Stethoscope className="w-3.5 h-3.5" /> Physician Clinical Console
-          </div>
-          <h1 className="text-3xl font-extrabold text-white leading-tight">
-            Clinical precision,<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-purple-200 to-white">powered by AI.</span>
-          </h1>
-          <p className="text-slate-300 text-sm leading-relaxed">
-            Access your patient roster, manage appointments, and generate AI-powered clinical summaries.
-          </p>
-          <div className="space-y-2.5 pt-3 border-t border-slate-800">
-            {[
-              { icon: Calendar, text: "Today's patient queue with appointment counts" },
-              { icon: FileText, text: 'Patient medical history & consultation notes' },
-              { icon: Briefcase, text: 'RAG-powered clinical AI summaries' },
-              { icon: ShieldCheck, text: 'HIPAA-conscious secure access' },
-            ].map(({ icon: Icon, text }, i) => (
-              <div key={i} className="flex items-center gap-2.5 text-xs text-slate-300">
-                <div className="w-5 h-5 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-3 h-3 text-indigo-400" />
+
+        {/* Right Form Panel */}
+        <div className="flex-1 flex flex-col justify-center items-center p-6 lg:p-12 bg-slate-950 min-h-screen lg:min-h-0">
+          <div className="w-full max-w-[420px]">
+            {view !== 'pending' && view !== 'forgot' && (
+              <>
+                <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-xl mb-5 relative shadow-inner">
+                  <motion.div layout transition={springSnappy}
+                    className="absolute top-1 bottom-1 rounded-lg bg-indigo-600 shadow-md"
+                    style={{ left: view === 'login' ? '4px' : 'calc(50% + 2px)', width: 'calc(50% - 6px)' }}
+                  />
+                  {(['login', 'register'] as const).map((v) => (
+                    <button key={v} type="button" onClick={() => setView(v)}
+                      className={`flex-1 py-2.5 text-xs font-bold rounded-lg relative z-10 transition-colors ${view === v ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                      {v === 'login' ? 'Doctor Sign In' : 'Register as Doctor'}
+                    </button>
+                  ))}
                 </div>
-                {text}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="relative z-10 text-xs text-slate-400 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" /> Encrypted &amp; HIPAA-conscious Platform
-        </div>
-      </div>
-
-      {/* Right Form Panel */}
-      <div className="flex-1 flex flex-col justify-center items-center p-6 lg:p-12 bg-slate-950 min-h-screen lg:min-h-0">
-        <div className="w-full max-w-[420px]">
-          {view !== 'pending' && (
-            <>
-              <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-xl mb-5 relative shadow-inner">
-                <motion.div layout transition={springSnappy}
-                  className="absolute top-1 bottom-1 rounded-lg bg-indigo-600 shadow-md"
-                  style={{ left: view === 'login' ? '4px' : 'calc(50% + 2px)', width: 'calc(50% - 6px)' }}
-                />
-                {(['login', 'register'] as const).map((v) => (
-                  <button key={v} type="button" onClick={() => setView(v)}
-                    className={`flex-1 py-2.5 text-xs font-bold rounded-lg relative z-10 transition-colors ${view === v ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}>
-                    {v === 'login' ? 'Doctor Sign In' : 'Register as Doctor'}
-                  </button>
-                ))}
-              </div>
-              <div className="mb-5 text-center">
-                <h2 className="text-xl font-extrabold text-slate-100 tracking-tight">
-                  {view === 'login' ? 'Doctor Portal Login' : 'Doctor Registration'}
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  {view === 'login' ? 'Access your clinical dashboard' : '3-step professional registration'}
-                </p>
-              </div>
-            </>
-          )}
-
-          <AnimatePresence mode="wait">
-            {view === 'login' && (
-              <motion.div key="login" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={easeOutExpo}>
-                <DoctorLoginForm onRegisterClick={() => setView('register')} />
-              </motion.div>
+                <div className="mb-5 text-center">
+                  <h2 className="text-xl font-extrabold text-slate-100 tracking-tight">
+                    {view === 'login' ? 'Doctor Portal Login' : 'Doctor Registration'}
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {view === 'login' ? 'Access your clinical dashboard' : '3-step professional registration'}
+                  </p>
+                </div>
+              </>
             )}
-            {view === 'register' && (
-              <motion.div key="register" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={easeOutExpo}>
-                <DoctorRegisterWizard onDone={() => setView('pending')} onBack={() => setView('login')} />
-              </motion.div>
-            )}
-            {view === 'pending' && (
-              <motion.div key="pending" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={easeOutExpo}>
-                <PendingScreen onLoginClick={() => setView('login')} />
-              </motion.div>
-            )}
-          </AnimatePresence>
 
-          <div className="mt-6 pt-4 border-t border-slate-800/60 text-center">
-            <Link href="/login" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
-              ← Back to Patient Portal
-            </Link>
+            <AnimatePresence mode="wait">
+              {view === 'login' && (
+                <motion.div key="login" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={easeOutExpo}>
+                  <DoctorLoginForm onRegisterClick={() => setView('register')} onForgotClick={() => setView('forgot')} />
+                </motion.div>
+              )}
+              {view === 'forgot' && (
+                <motion.div key="forgot" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={easeOutExpo}>
+                  <DoctorForgotPasswordWizard onBackToLogin={() => setView('login')} />
+                </motion.div>
+              )}
+              {view === 'register' && (
+                <motion.div key="register" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={easeOutExpo}>
+                  <DoctorRegisterWizard onDone={() => setView('pending')} onBack={() => setView('login')} />
+                </motion.div>
+              )}
+              {view === 'pending' && (
+                <motion.div key="pending" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={easeOutExpo}>
+                  <PendingScreen onLoginClick={() => setView('login')} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="mt-6 pt-4 border-t border-slate-800/60 text-center">
+              <Link href="/login" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+                ← Back to Patient Portal
+              </Link>
+            </div>
           </div>
         </div>
       </div>

@@ -75,12 +75,10 @@ class BaseRepository(Generic[ModelType]):
         # Pagination
         stmt = stmt.offset(offset).limit(limit)
 
-        import asyncio
-
-        items_result, count_result = await asyncio.gather(
-            self.session.execute(stmt),
-            self.session.execute(count_stmt)
-        )
+        # NOTE: asyncio.gather on the same AsyncSession is unsafe – SQLAlchemy
+        # sessions cannot be used concurrently (raises ISCE). Run sequentially.
+        items_result = await self.session.execute(stmt)
+        count_result = await self.session.execute(count_stmt)
 
         return list(items_result.scalars().all()), count_result.scalar_one()
 

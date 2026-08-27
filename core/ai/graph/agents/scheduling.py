@@ -22,6 +22,7 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 
 from core.ai.graph.tools.server import mcp_server
 from core.ai.llm.litellm_client import get_fallback_chat_llm, AIServiceUnavailableError
+from core.ai.llm.message_utils import sanitize_messages
 from core.config.logging import get_logger
 from core.config.settings import settings
 
@@ -39,6 +40,7 @@ CRITICAL RULES FOR CHATBOT UX:
 1. NEVER ask for information you already know or can resolve. If the user says "tomorrow", resolve it relative to the provided current date automatically.
 2. Ask only for the NEXT piece of information required, one step at a time.
 3. NEVER output markdown tables. Instead, whenever you need to present booking information to the user, you MUST output a JSON block wrapped in ```json ... ```. Our frontend will parse this and render interactive UI cards.
+4. NEVER ask the user for a Doctor ID or Patient ID. The ID is an internal system detail. If the user provides a doctor's name, you MUST use the `get_doctor_availability` tool with the `name` parameter to find their schedule and Doctor ID automatically.
 
 ### Supported UI Action Blocks (Output these EXACTLY as shown when applicable):
 
@@ -143,7 +145,7 @@ class SchedulingAgent:
 
             fallback_llm = self._make_llm(self._fallback_model, settings.groq_api_key)
             try:
-                return await fallback_llm.bind_tools(tools).ainvoke(messages)
+                return await fallback_llm.bind_tools(tools).ainvoke(sanitize_messages(messages))
             except Exception as fallback_exc:
                 logger.error(
                     "Scheduling: Groq fallback also failed",

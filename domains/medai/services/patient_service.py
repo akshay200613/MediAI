@@ -18,10 +18,12 @@ logger = get_logger("medai.patient_service")
 
 class PatientService:
     def __init__(self, session: AsyncSession) -> None:
+        self.session = session
         self.repo = PatientRepository(session)
 
     async def create_patient(self, data: PatientCreate) -> PatientOut:
         patient = await self.repo.create(data.model_dump(exclude_none=True))
+        await self.session.commit()
         logger.info("Patient created", patient_id=str(patient.id))
         return self._to_out(patient)
 
@@ -67,10 +69,16 @@ class PatientService:
         patient = await self.repo.update(
             patient_id, data.model_dump(exclude_none=True, exclude_unset=True)
         )
-        return self._to_out(patient) if patient else None
+        if not patient:
+            return None
+        await self.session.commit()
+        return self._to_out(patient)
 
     async def delete_patient(self, patient_id: uuid.UUID) -> bool:
-        return await self.repo.soft_delete(patient_id)
+        res = await self.repo.soft_delete(patient_id)
+        if res:
+            await self.session.commit()
+        return res
 
     async def search_patients(self, query: str) -> list[PatientOut]:
         patients = await self.repo.search(query)

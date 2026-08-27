@@ -10,7 +10,7 @@ from core.ai.rag.pipeline import RAGPipeline
 from core.ai.llm.litellm_client import get_llm_client
 from core.config.settings import settings
 from core.config.logging import get_logger
-from core.metrics import rag_queries_total, rag_ingest_total, rag_chunks_indexed
+from core.metrics import rag_ingest_total, rag_chunks_indexed
 
 logger = get_logger("medai.rag_api")
 router = APIRouter()
@@ -107,7 +107,6 @@ async def query_knowledge_base(
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    rag_queries_total.labels(role=_.role).inc()
     pipeline = get_rag_pipeline()
     result = await pipeline.query(user_query=query, top_k=top_k)
 

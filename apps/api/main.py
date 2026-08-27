@@ -16,7 +16,7 @@ from core.database.base import engine, Base
 from core.database.redis_client import get_redis_pool, close_redis_pool
 from core.database.qdrant_client import close_qdrant_client
 from core.api.v1.router import core_v1_router
-from core.metrics import create_instrumentator, app_info
+from core.metrics import create_instrumentator, app_info, init_metrics
 from core.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
 
 # ── Domain Registries ─────────────────────────────────────────────────────────
@@ -32,6 +32,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     configure_logging()
     logger.info("Starting MedAI", version=settings.app_version, env=settings.environment)
+
+    # Pre-register zero-value metric series for Prometheus
+    init_metrics()
 
     # Publish app metadata to Prometheus info metric
     app_info.info({

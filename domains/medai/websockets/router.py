@@ -52,7 +52,8 @@ async def websocket_appointments(
     patient_id = None
     doctor_id = None
 
-    async with AsyncSessionLocal() as session:
+    session = AsyncSessionLocal()
+    try:
         # Check Patient
         pat_res = await session.execute(
             select(Patient).where(
@@ -74,6 +75,8 @@ async def websocket_appointments(
         doc = doc_res.scalar_one_or_none()
         if doc:
             doctor_id = str(doc.id)
+    finally:
+        await session.close()
 
     # 3. Register Connection
     await manager.connect(

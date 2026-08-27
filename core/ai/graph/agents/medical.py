@@ -18,6 +18,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 
 from core.ai.llm.litellm_client import get_llm_client, get_fallback_chat_llm, AIServiceUnavailableError
+from core.ai.llm.message_utils import sanitize_messages
 from core.ai.rag.pipeline import RAGPipeline
 from core.ai.graph.tools.server import mcp_server
 from core.config.logging import get_logger
@@ -107,7 +108,7 @@ class MedicalGraphAgent:
 
             fallback_llm = self._make_llm(self._fallback_model, settings.groq_api_key)
             try:
-                return await fallback_llm.bind_tools(tools).ainvoke(messages)
+                return await fallback_llm.bind_tools(tools).ainvoke(sanitize_messages(messages))
             except Exception as fallback_exc:
                 logger.error(
                     "Medical: Groq fallback also failed",

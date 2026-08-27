@@ -6,6 +6,7 @@ Supports regular and streaming responses from the Medical AI Agent.
 import uuid
 import json
 import logging
+import time
 from typing import AsyncIterator
 from datetime import date
 
@@ -35,13 +36,18 @@ def has_patient_details(message: str) -> bool:
     keywords = (
         "date of birth",
         "dob",
+        "born on",
         "gender",
+        "male",
+        "female",
         "blood group",
         "blood type",
         "address",
+        "live at",
         "city",
         "state",
         "emergency contact",
+        "emergency_contact",
     )
 
     message_lower = message.lower()
@@ -228,6 +234,7 @@ async def chat(
     updated_fields = {}
     missing_fields = []
     patient_name = current_user.full_name
+    pat = None
 
     if current_user.role in ("patient", "user"):
         background_tasks.add_task(

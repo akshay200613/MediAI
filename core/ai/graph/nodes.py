@@ -19,7 +19,7 @@ Node pipeline:
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from core.ai.graph.agents.knowledge import KnowledgeAgent
 from core.ai.graph.agents.medical import MedicalGraphAgent
@@ -29,6 +29,7 @@ from core.ai.graph.agents.supervisor import SupervisorAgent
 from core.ai.graph.state import MedAIState
 from core.ai.graph.tools.server import mcp_server
 from core.ai.llm.litellm_client import AIServiceUnavailableError  # noqa: F401 – re-exported for graph callers
+from core.ai.llm.message_utils import sanitize_messages
 from langgraph.prebuilt import ToolNode
 from core.config.logging import get_logger
 
@@ -103,7 +104,7 @@ async def reception_node(state: MedAIState) -> dict:
 
     result = await agent.process(
         message=last_message,
-        conversation_history=state.get("messages", []),
+        conversation_history=sanitize_messages(state.get("messages", [])),
     )
 
     logger.info(
@@ -145,7 +146,7 @@ async def supervisor_node(state: MedAIState) -> dict:
     result = await agent.process(
         intent=state.get("intent", "general"),
         entities=state.get("entities", {}),
-        conversation_history=state.get("messages", []),
+        conversation_history=sanitize_messages(state.get("messages", [])),
     )
 
     logger.info(
@@ -179,7 +180,7 @@ async def medical_node(state: MedAIState) -> dict:
     result = await agent.process(
         message=last_message,
         entities=state.get("entities", {}),
-        conversation_history=state.get("messages", []),
+        conversation_history=sanitize_messages(state.get("messages", [])),
         user_id=state.get("user_id", ""),
         patient_context=state.get("patient_context", {}),
     )
@@ -212,7 +213,7 @@ async def scheduling_node(state: MedAIState) -> dict:
     result = await agent.process(
         message=last_message,
         entities=state.get("entities", {}),
-        conversation_history=state.get("messages", []),
+        conversation_history=sanitize_messages(state.get("messages", [])),
         user_id=state.get("user_id", ""),
         patient_context=state.get("patient_context", {}),
     )
@@ -247,7 +248,7 @@ async def knowledge_node(state: MedAIState) -> dict:
     result = await agent.process(
         message=last_message,
         entities=state.get("entities", {}),
-        conversation_history=state.get("messages", []),
+        conversation_history=sanitize_messages(state.get("messages", [])),
     )
 
     return {

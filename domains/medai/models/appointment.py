@@ -19,6 +19,7 @@ class AppointmentStatus(StrEnum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     NO_SHOW = "no_show"
+    INCOMPLETE = "incomplete"
 
 
 class AppointmentType(StrEnum):

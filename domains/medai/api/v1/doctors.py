@@ -61,13 +61,26 @@ async def update_doctor(
     doctor_id: uuid.UUID,
     data: DoctorUpdate,
     session: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_permission(Permission.MANAGE_USERS)),
+    current_user: CurrentUser = Depends(require_permission(Permission.MANAGE_USERS)),
 ) -> DataResponse[DoctorOut]:
     svc = DoctorService(session)
     doctor = await svc.update_doctor(doctor_id, data)
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
-    return DataResponse(data=doctor, message="Doctor updated")
+
+    from domains.medai.websockets.manager import manager
+    try:
+        updated_fields = [f for f, v in data.model_dump(exclude_unset=True).items() if v is not None]
+        summary_msg = f"Admin ({current_user.full_name or 'System'}) updated your profile: {', '.join(updated_fields)}."
+        await manager.notify_doctor_updated(
+            doctor_id=str(doctor.id),
+            doctor_data=doctor.model_dump(mode="json"),
+            changes_summary=summary_msg,
+        )
+    except Exception as e:
+        pass
+
+    return DataResponse(data=doctor, message="Doctor updated successfully and notification sent to doctor")
 
 
 @router.delete("/{doctor_id}", status_code=204, summary="Delete doctor")

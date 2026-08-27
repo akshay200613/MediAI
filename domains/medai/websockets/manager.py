@@ -113,36 +113,76 @@ class ConnectionManager:
         doctor_id: str | None = None,
     ) -> None:
         """
-        Notify all relevant portals:
-        - Target patient connections
-        - Target doctor connections
-        - All admin & super_admin connections
+        Notify all connected portals (patients, doctors, admins) so slot availability,
+        master appointment matrix, doctor calendar, and patient history update in real time.
         """
         payload = {
             "event": event_type,
             "data": appointment_data,
         }
 
-        target_sockets: set[str] = set()
+        # Broadcast to all active WebSocket connections across Patient, Doctor, and Admin portals
+        target_sockets = set(self.active_connections.keys())
+        await self.broadcast_event(payload, target_sockets)
 
-        # Add admin sockets
+    async def notify_doctor_updated(
+        self,
+        doctor_id: str,
+        doctor_data: dict[str, Any],
+        changes_summary: str | None = None,
+    ) -> None:
+        """
+        Notify target doctor and admins when admin edits doctor profile.
+        """
+        payload = {
+            "event": "doctor_updated",
+            "message": changes_summary or "Admin has updated your profile details.",
+            "data": doctor_data,
+        }
+
+        target_sockets: set[str] = set()
+        target_sockets.update(self.role_sockets.get("admin", set()))
+        target_sockets.update(self.role_sockets.get("super_admin", set()))
+        target_sockets.update(self.role_sockets.get("doctor", set()))
+
+        if doctor_id in self.doctor_sockets:
+            target_sockets.update(self.doctor_sockets[doctor_id])
+
+        logger.info(
+            "Broadcasting doctor_updated event",
+            doctor_id=doctor_id,
+            recipient_sockets_count=len(target_sockets),
+        )
+
+        await self.broadcast_event(payload, target_sockets)
+
+    async def notify_admin_password_reset_request(
+        self,
+        user_id: str,
+        email: str,
+        full_name: str,
+    ) -> None:
+        """
+        Notify all admins when a doctor requests a password reset.
+        """
+        payload = {
+            "event": "doctor_password_reset_requested",
+            "message": f"Doctor {full_name} ({email}) has requested a password reset.",
+            "data": {
+                "user_id": user_id,
+                "email": email,
+                "full_name": full_name,
+            },
+        }
+
+        target_sockets: set[str] = set()
         target_sockets.update(self.role_sockets.get("admin", set()))
         target_sockets.update(self.role_sockets.get("super_admin", set()))
 
-        # Add doctor sockets
-        if doctor_id and doctor_id in self.doctor_sockets:
-            target_sockets.update(self.doctor_sockets[doctor_id])
-
-        # Add patient sockets
-        if patient_id and patient_id in self.patient_sockets:
-            target_sockets.update(self.patient_sockets[patient_id])
-
         logger.info(
-            "Broadcasting appointment event",
-            event_type=event_type,
+            "Broadcasting doctor_password_reset_requested event to admins",
+            user_id=user_id,
             recipient_sockets_count=len(target_sockets),
-            patient_id=patient_id,
-            doctor_id=doctor_id,
         )
 
         await self.broadcast_event(payload, target_sockets)
@@ -150,3 +190,5 @@ class ConnectionManager:
 
 # Global Singleton Manager
 manager = ConnectionManager()
+
+

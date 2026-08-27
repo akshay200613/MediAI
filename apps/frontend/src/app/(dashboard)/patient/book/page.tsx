@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, Calendar, Clock, UserCheck, CheckCircle2, AlertCircle, Loader2, Sunrise, Sun, Moon, ArrowRight, Edit2 } from 'lucide-react'
 import apiClient from '@/lib/api/client'
+import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
 
 export default function PatientBookPage() {
   const router = useRouter()
@@ -21,20 +22,22 @@ export default function PatientBookPage() {
   const [isBooking, setIsBooking] = useState(false)
   const [bookingStatus, setBookingStatus] = useState<{ success: boolean; message: string } | null>(null)
   
+  // ISO datetimes of booked appointments for next 14 days
   const [bookedSlots, setBookedSlots] = useState<string[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
 
   const format12Hr = (time24: string) => {
     if (!time24) return '';
-    const [h, m] = time24.split(':');
+    const clean = time24.slice(0, 5)
+    const [h, m] = clean.split(':');
     let hours = parseInt(h, 10);
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
+    hours = hours ? hours : 12;
     return `${hours.toString().padStart(2, '0')}:${m} ${ampm}`;
   }
 
-  // Fetch doctors
+  // Fetch available doctors
   useEffect(() => {
     const fetchDoctors = async () => {
       try {
@@ -50,18 +53,19 @@ export default function PatientBookPage() {
     fetchDoctors()
   }, [])
 
-  // Fetch booked slots when doctor and date change
+  // Fetch booked slots for the selected doctor across the next 14 days
   const fetchBookedSlots = async () => {
-    if (!selectedDoctor || !bookingDate) return
+    if (!selectedDoctor) return
     try {
       setSlotsLoading(true)
-      const res = await apiClient.get(`/medai/appointments/booked-slots?doctor_id=${selectedDoctor.id}&date=${bookingDate}`)
-      const slots = res.data?.data || []
-      const formattedSlots = slots.map((iso: string) => {
-        const d = new Date(iso)
-        return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-      })
-      setBookedSlots(formattedSlots)
+      const now = new Date()
+      const todayStr = now.toISOString().split('T')[0]
+      const future = new Date(now)
+      future.setDate(now.getDate() + 14)
+      const futureStr = future.toISOString().split('T')[0]
+
+      const res = await apiClient.get(`/medai/appointments/booked-slots?doctor_id=${selectedDoctor.id}&date=${todayStr}&end_date=${futureStr}`)
+      setBookedSlots(res.data?.data || [])
     } catch (err) {
       console.error('Failed to fetch booked slots', err)
     } finally {
@@ -71,7 +75,170 @@ export default function PatientBookPage() {
 
   useEffect(() => {
     fetchBookedSlots()
-  }, [selectedDoctor, bookingDate])
+  }, [selectedDoctor])
+
+  // Real-time slot synchronization: update booked slots instantly on WebSocket events
+  useAppointmentSocket(() => {
+    if (selectedDoctor) {
+      fetchBookedSlots()
+    }
+  })
+
+  const parseAllowedDays = (daysStr?: string): string[] => {
+    if (!daysStr) return ['mon', 'tue', 'wed', 'thu', 'fri']
+    const allDays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+    const dayMap: Record<string, string> = {
+      monday: 'mon', mon: 'mon',
+      tuesday: 'tue', tue: 'tue',
+      wednesday: 'wed', wed: 'wed',
+      thursday: 'thu', thu: 'thu',
+      friday: 'fri', fri: 'fri',
+      saturday: 'sat', sat: 'sat',
+      sunday: 'sun', sun: 'sun',
+    }
+    const clean = daysStr.toLowerCase().trim()
+    if (clean.includes('-') && !clean.includes(',')) {
+      const parts = clean.split('-')
+      const s = dayMap[parts[0].trim()] || 'mon'
+      const e = dayMap[parts[1].trim()] || 'fri'
+      const sIdx = allDays.indexOf(s)
+      const eIdx = allDays.indexOf(e)
+      if (sIdx !== -1 && eIdx !== -1) {
+        return sIdx <= eIdx ? allDays.slice(sIdx, eIdx + 1) : [...allDays.slice(sIdx), ...allDays.slice(0, eIdx + 1)]
+      }
+    }
+    const result = new Set<string>()
+    clean.replace(';', ',').split(',').forEach((t) => {
+      const item = t.trim()
+      if (dayMap[item]) result.add(dayMap[item])
+    })
+    return result.size > 0 ? Array.from(result) : ['mon', 'tue', 'wed', 'thu', 'fri']
+  }
+
+  const getLocalDateStr = (d: Date) => {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  // Compute available dates (next 14 days) that match doctor's schedule and have AT LEAST 1 open slot
+  const getAvailableDates = () => {
+    if (!selectedDoctor) return []
+    const allowedDays = parseAllowedDays(selectedDoctor.available_days)
+
+    const startStr = (selectedDoctor.working_hours_start || '09:00').slice(0, 5)
+    const endStr = (selectedDoctor.working_hours_end || '17:00').slice(0, 5)
+
+    // Candidate 30-min time slots strictly within doctor's working hours
+    const baseSlots: string[] = []
+    let curr = new Date(`1970-01-01T${startStr}:00`)
+    const end = new Date(`1970-01-01T${endStr}:00`)
+    while (curr.getTime() + 30 * 60 * 1000 <= end.getTime()) {
+      baseSlots.push(`${curr.getHours().toString().padStart(2, '0')}:${curr.getMinutes().toString().padStart(2, '0')}`)
+      curr.setMinutes(curr.getMinutes() + 30)
+    }
+
+    const now = new Date()
+    const todayStr = getLocalDateStr(now)
+    const currentMins = now.getHours() * 60 + now.getMinutes()
+
+    const bookedSet = new Set(
+      bookedSlots.map((iso: string) => {
+        const d = new Date(iso)
+        const datePart = getLocalDateStr(d)
+        const timePart = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+        return `${datePart}T${timePart}`
+      })
+    )
+
+    const available: Date[] = []
+
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(now)
+      d.setDate(now.getDate() + i)
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase()
+
+      // 1. Must match doctor's specific available days
+      if (!allowedDays.includes(dayName)) continue
+
+      const dateStr = getLocalDateStr(d)
+
+      // 2. Count remaining unbooked future slots for this date
+      const openSlots = baseSlots.filter(slot => {
+        if (bookedSet.has(`${dateStr}T${slot}`)) return false
+        if (dateStr === todayStr) {
+          const [h, m] = slot.split(':').map(Number)
+          if (h * 60 + m <= currentMins) return false
+        }
+        return true
+      })
+
+      // ONLY include date if it has open slots available
+      if (openSlots.length > 0) {
+        available.push(d)
+      }
+    }
+
+    return available
+  }
+
+  const availableDates = getAvailableDates()
+
+  // Auto-select first available date if current date selection is invalid or empty
+  useEffect(() => {
+    if (selectedDoctor && availableDates.length > 0) {
+      const dateStrs = availableDates.map(d => getLocalDateStr(d))
+      if (!bookingDate || !dateStrs.includes(bookingDate)) {
+        setBookingDate(dateStrs[0])
+      }
+    }
+  }, [selectedDoctor, bookedSlots])
+
+  // Generate open, unbooked time slots strictly within selected doctor's working hours
+  const generateTimeSlots = () => {
+    if (!selectedDoctor || !bookingDate) return { morning: [], afternoon: [], evening: [] }
+    const startStr = (selectedDoctor.working_hours_start || '09:00').slice(0, 5)
+    const endStr = (selectedDoctor.working_hours_end || '17:00').slice(0, 5)
+    
+    const slots: string[] = []
+    let current = new Date(`1970-01-01T${startStr}:00`)
+    const end = new Date(`1970-01-01T${endStr}:00`)
+    
+    while (current.getTime() + 30 * 60 * 1000 <= end.getTime()) {
+      slots.push(`${current.getHours().toString().padStart(2, '0')}:${current.getMinutes().toString().padStart(2, '0')}`)
+      current.setMinutes(current.getMinutes() + 30)
+    }
+
+    const now = new Date()
+    const todayStr = getLocalDateStr(now)
+    const currentMins = now.getHours() * 60 + now.getMinutes()
+
+    const bookedSet = new Set(
+      bookedSlots.map((iso: string) => {
+        const d = new Date(iso)
+        const datePart = getLocalDateStr(d)
+        const timePart = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+        return `${datePart}T${timePart}`
+      })
+    )
+
+    // Exclude booked slots and past time slots
+    const availableSlots = slots.filter(slot => {
+      if (bookedSet.has(`${bookingDate}T${slot}`)) return false
+      if (bookingDate === todayStr) {
+        const [h, m] = slot.split(':').map(Number)
+        if (h * 60 + m <= currentMins) return false
+      }
+      return true
+    })
+
+    return {
+      morning: availableSlots.filter(s => parseInt(s.split(':')[0]) < 12),
+      afternoon: availableSlots.filter(s => parseInt(s.split(':')[0]) >= 12 && parseInt(s.split(':')[0]) < 17),
+      evening: availableSlots.filter(s => parseInt(s.split(':')[0]) >= 17)
+    }
+  }
+
+  const { morning, afternoon, evening } = generateTimeSlots()
+  const hasSlots = morning.length > 0 || afternoon.length > 0 || evening.length > 0
 
   const filteredDoctors = doctors.filter(
     (d) =>
@@ -86,19 +253,14 @@ export default function PatientBookPage() {
     setBookingStatus(null)
 
     try {
-      const scheduledDateTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString()
+      const scheduledDateTime = `${bookingDate}T${bookingTime}:00`
 
-      const meRes = await apiClient.get('/auth/me')
-      const patientId = meRes.data?.data?.patient_id
-
-      if (!patientId) {
-        setBookingStatus({
-          success: false,
-          message: 'No patient profile found for your account. Please complete your registration first.',
-        })
-        setIsBooking(false)
-        setCurrentStep(1)
-        return
+      let patientId: string | null = null
+      try {
+        const meRes = await apiClient.get('/auth/me')
+        patientId = meRes.data?.data?.patient_id || meRes.data?.data?.id
+      } catch (err) {
+        console.error('Failed to get /auth/me', err)
       }
 
       await apiClient.post('/medai/appointments/book', {
@@ -112,7 +274,7 @@ export default function PatientBookPage() {
 
       setBookingStatus({
         success: true,
-        message: `Appointment confirmed with ${selectedDoctor.full_name} for ${bookingDate} at ${bookingTime}!`,
+        message: `Appointment confirmed with ${selectedDoctor.full_name} for ${bookingDate} at ${format12Hr(bookingTime)}!`,
       })
       setTimeout(() => router.push('/patient/appointments'), 2000)
     } catch (err: any) {
@@ -120,11 +282,11 @@ export default function PatientBookPage() {
       if (errorDetail.toLowerCase().includes('double booking')) {
         setBookingStatus({
           success: false,
-          message: `This slot is no longer available. Someone else just booked ${bookingTime}. Please choose another available time.`,
+          message: `This slot is no longer available. Someone else just booked ${format12Hr(bookingTime)}. Please choose another available time.`,
         })
         setBookingTime('')
-        setCurrentStep(3) // Send back to time selection
-        fetchBookedSlots() // Refresh slots immediately
+        setCurrentStep(3)
+        fetchBookedSlots()
       } else {
         setBookingStatus({
           success: false,
@@ -136,31 +298,6 @@ export default function PatientBookPage() {
       setIsBooking(false)
     }
   }
-
-  // Generate dynamic slots based on doctor's working hours
-  const generateTimeSlots = () => {
-    if (!selectedDoctor) return { morning: [], afternoon: [], evening: [] }
-    const startStr = selectedDoctor.working_hours_start || '09:00'
-    const endStr = selectedDoctor.working_hours_end || '17:00'
-    
-    const slots: string[] = []
-    let current = new Date(`1970-01-01T${startStr}:00`)
-    const end = new Date(`1970-01-01T${endStr}:00`)
-    
-    while (current < end) {
-      slots.push(`${current.getHours().toString().padStart(2, '0')}:${current.getMinutes().toString().padStart(2, '0')}`)
-      current.setMinutes(current.getMinutes() + 30) // 30-min intervals
-    }
-
-    return {
-      morning: slots.filter(s => parseInt(s.split(':')[0]) < 12),
-      afternoon: slots.filter(s => parseInt(s.split(':')[0]) >= 12 && parseInt(s.split(':')[0]) < 17),
-      evening: slots.filter(s => parseInt(s.split(':')[0]) >= 17)
-    }
-  }
-
-  const { morning, afternoon, evening } = generateTimeSlots()
-  const hasSlots = morning.length > 0 || afternoon.length > 0 || evening.length > 0
 
   if (loading) {
     return (
@@ -179,23 +316,19 @@ export default function PatientBookPage() {
         </h4>
         <div className="flex flex-wrap gap-2">
           {slots.map(slot => {
-            const isBooked = bookedSlots.includes(slot)
             const isSelected = bookingTime === slot
             return (
               <button
                 key={slot}
                 type="button"
-                disabled={isBooked}
                 onClick={() => {
                   setBookingTime(slot)
-                  setCurrentStep(4) // Advance to reason step
+                  setCurrentStep(4)
                 }}
                 className={`px-4 py-2 rounded-xl text-xs font-medium transition-all ${
-                  isBooked 
-                    ? 'bg-slate-900 border border-slate-800 text-slate-600 cursor-not-allowed opacity-60' 
-                    : isSelected 
-                      ? 'bg-teal-600 text-white shadow-lg shadow-teal-900/40' 
-                      : 'bg-slate-950 border border-slate-700 text-slate-300 hover:border-teal-500/50 hover:bg-slate-900'
+                  isSelected 
+                    ? 'bg-teal-600 text-white shadow-lg shadow-teal-900/40' 
+                    : 'bg-slate-950 border border-slate-700 text-slate-300 hover:border-teal-500/50 hover:bg-slate-900'
                 }`}
               >
                 {format12Hr(slot)}
@@ -211,7 +344,7 @@ export default function PatientBookPage() {
     <div className="p-6 space-y-6 bg-slate-950 min-h-screen text-slate-100 font-sans max-w-3xl mx-auto">
       <div className="border-b border-slate-800 pb-4">
         <h1 className="text-2xl font-bold tracking-tight text-slate-100">Book Doctor Appointment</h1>
-        <p className="text-xs text-slate-400 mt-1">Follow the steps below to schedule your consultation.</p>
+        <p className="text-xs text-slate-400 mt-1">Select a doctor to view their specific available days and working hours.</p>
       </div>
 
       {bookingStatus && (
@@ -283,6 +416,13 @@ export default function PatientBookPage() {
                         </span>
                       </div>
                       <p className="text-[11px] text-teal-400 font-medium mt-0.5">{doc.specialty}</p>
+
+                      <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-slate-400">
+                        <Clock className="w-3 h-3 text-teal-400 shrink-0" />
+                        <span>
+                          Days: <strong className="text-slate-200">{doc.available_days || 'Mon,Tue,Wed,Thu,Fri'}</strong> | Hours: <strong className="text-slate-200">{format12Hr(doc.working_hours_start || '09:00')} - {format12Hr(doc.working_hours_end || '17:00')}</strong>
+                        </span>
+                      </div>
                     </div>
                   ))
                 )}
@@ -290,15 +430,20 @@ export default function PatientBookPage() {
             </div>
           ) : (
             selectedDoctor && (
-              <div className="text-sm font-medium text-slate-300 pl-8">
-                {selectedDoctor.full_name} <span className="text-xs text-teal-400">({selectedDoctor.specialty})</span>
+              <div className="text-sm font-medium text-slate-300 pl-8 flex items-center justify-between">
+                <div>
+                  <span>{selectedDoctor.full_name}</span> <span className="text-xs text-teal-400">({selectedDoctor.specialty})</span>
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  {selectedDoctor.available_days || 'Mon,Tue,Wed,Thu,Fri'} • {format12Hr(selectedDoctor.working_hours_start || '09:00')} to {format12Hr(selectedDoctor.working_hours_end || '17:00')}
+                </div>
               </div>
             )
           )}
         </div>
 
         {/* Step 2: Select Date */}
-        {currentStep >= 2 && (
+        {currentStep >= 2 && selectedDoctor && (
           <div className={`p-5 rounded-2xl border transition-all ${currentStep === 2 ? 'bg-slate-900 border-teal-500/50 shadow-xl shadow-teal-900/10' : 'bg-slate-900/40 border-slate-800 opacity-60 hover:opacity-100'}`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
@@ -314,70 +459,73 @@ export default function PatientBookPage() {
             
             {currentStep === 2 ? (
               <div className="space-y-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex gap-2">
-                    {(() => {
-                      const today = new Date();
-                      const tomorrow = new Date(today);
-                      tomorrow.setDate(today.getDate() + 1);
-                      
-                      const formatDateStr = (d: Date) => d.toISOString().split('T')[0];
-                      const todayStr = formatDateStr(today);
-                      const tomorrowStr = formatDateStr(tomorrow);
-                      
-                      const allowedDays = (selectedDoctor?.available_days || 'Mon,Tue,Wed,Thu,Fri').toLowerCase().split(',').map((d: string) => d.trim());
-                      const isTodayAllowed = allowedDays.includes(today.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase());
-                      const isTomorrowAllowed = allowedDays.includes(tomorrow.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase());
-                      
-                      return (
-                        <>
-                          <button
-                            type="button"
-                            disabled={!isTodayAllowed}
-                            onClick={() => { setBookingDate(todayStr); setBookingTime(''); setCurrentStep(3); }}
-                            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${!isTodayAllowed ? 'opacity-40 cursor-not-allowed bg-slate-950 border border-slate-800 text-slate-500' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-teal-500/50'}`}
-                          >
-                            Today
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!isTomorrowAllowed}
-                            onClick={() => { setBookingDate(tomorrowStr); setBookingTime(''); setCurrentStep(3); }}
-                            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${!isTomorrowAllowed ? 'opacity-40 cursor-not-allowed bg-slate-950 border border-slate-800 text-slate-500' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-teal-500/50'}`}
-                          >
-                            Tomorrow
-                          </button>
-                        </>
-                      )
-                    })()}
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-teal-400 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-slate-200">Schedule for {selectedDoctor.full_name}</p>
+                      <p className="text-[11px] text-slate-400">
+                        Available Days: <strong className="text-teal-300">{selectedDoctor.available_days || 'Mon,Tue,Wed,Thu,Fri'}</strong> | Working Hours: <strong className="text-teal-300">{format12Hr(selectedDoctor.working_hours_start || '09:00')} - {format12Hr(selectedDoctor.working_hours_end || '17:00')}</strong>
+                      </p>
+                    </div>
                   </div>
+                </div>
 
-                  <p className="text-xs text-slate-500 text-center font-medium my-1">OR CHOOSE DATE</p>
+                {slotsLoading ? (
+                  <div className="flex items-center justify-center py-6 gap-2 text-xs text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin text-teal-400" />
+                    <span>Checking Dr. {selectedDoctor.last_name}'s schedule & open slots...</span>
+                  </div>
+                ) : availableDates.length === 0 ? (
+                  <div className="p-4 bg-slate-950 border border-dashed border-slate-800 rounded-xl text-xs text-slate-400 text-center">
+                    Dr. {selectedDoctor?.full_name} has no available booking slots for the next 14 days. All slots are either fully booked or outside working hours ({selectedDoctor.available_days || 'Mon,Tue,Wed,Thu,Fri'}).
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex gap-2">
+                      {(() => {
+                        const now = new Date();
+                        const todayStr = now.toISOString().split('T')[0];
+                        const tomorrow = new Date(now);
+                        tomorrow.setDate(now.getDate() + 1);
+                        const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-                  <div className="flex overflow-x-auto pb-2 gap-2 snap-x scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-                    {(() => {
-                      const allowedDays = (selectedDoctor?.available_days || 'Mon,Tue,Wed,Thu,Fri').toLowerCase().split(',').map((d: string) => d.trim());
-                      const dates = [];
-                      const today = new Date();
-                      
-                      for (let i = 0; i < 14; i++) {
-                        const d = new Date(today);
-                        d.setDate(today.getDate() + i);
-                        const dayName = d.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
-                        if (allowedDays.includes(dayName)) {
-                          dates.push(d);
-                        }
-                      }
-                      
-                      if (dates.length === 0) {
+                        const isTodayAvailable = availableDates.some(d => d.toISOString().split('T')[0] === todayStr);
+                        const isTomorrowAvailable = availableDates.some(d => d.toISOString().split('T')[0] === tomorrowStr);
+
+                        if (!isTodayAvailable && !isTomorrowAvailable) return null;
+
                         return (
-                          <div className="text-xs text-slate-500 italic p-2 border border-dashed border-slate-800 rounded-lg w-full text-center">
-                            No available dates found matching doctor's schedule.
-                          </div>
-                        );
-                      }
+                          <>
+                            {isTodayAvailable && (
+                              <button
+                                type="button"
+                                onClick={() => { setBookingDate(todayStr); setBookingTime(''); setCurrentStep(3); }}
+                                className={`flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all ${bookingDate === todayStr ? 'bg-teal-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-teal-500/50'}`}
+                              >
+                                Today
+                              </button>
+                            )}
+                            {isTomorrowAvailable && (
+                              <button
+                                type="button"
+                                onClick={() => { setBookingDate(tomorrowStr); setBookingTime(''); setCurrentStep(3); }}
+                                className={`flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all ${bookingDate === tomorrowStr ? 'bg-teal-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-teal-500/50'}`}
+                              >
+                                Tomorrow
+                              </button>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
 
-                      return dates.map((d) => {
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider text-center font-medium my-1">
+                      Available Dates for Dr. {selectedDoctor.last_name}
+                    </p>
+
+                    <div className="flex overflow-x-auto pb-2 gap-2 snap-x scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+                      {availableDates.map((d) => {
                         const dateStr = d.toISOString().split('T')[0];
                         const isSelected = bookingDate === dateStr;
                         const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
@@ -404,10 +552,10 @@ export default function PatientBookPage() {
                             </span>
                           </button>
                         );
-                      });
-                    })()}
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ) : (
               bookingDate && (
@@ -420,7 +568,7 @@ export default function PatientBookPage() {
         )}
 
         {/* Step 3: Select Time */}
-        {currentStep >= 3 && (
+        {currentStep >= 3 && selectedDoctor && (
           <div className={`p-5 rounded-2xl border transition-all ${currentStep === 3 ? 'bg-slate-900 border-teal-500/50 shadow-xl shadow-teal-900/10' : 'bg-slate-900/40 border-slate-800 opacity-60 hover:opacity-100'}`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
@@ -436,14 +584,22 @@ export default function PatientBookPage() {
             
             {currentStep === 3 ? (
               <div className="space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-slate-400">Available Time Slots for {bookingDate}</span>
-                  {slotsLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-500" />}
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-teal-400 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-slate-200">Doctor Working Hours on {bookingDate}</p>
+                      <p className="text-[11px] text-slate-400">
+                        Dr. {selectedDoctor.full_name} is available from <strong className="text-teal-300">{format12Hr(selectedDoctor.working_hours_start || '09:00')}</strong> to <strong className="text-teal-300">{format12Hr(selectedDoctor.working_hours_end || '17:00')}</strong>.
+                      </p>
+                    </div>
+                  </div>
+                  {slotsLoading && <Loader2 className="w-4 h-4 animate-spin text-teal-400 shrink-0" />}
                 </div>
                 
                 {!hasSlots ? (
-                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-500 text-center">
-                    This doctor has no available working hours configured.
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-400 text-center">
+                    No open time slots for {bookingDate} within Dr. {selectedDoctor.last_name}'s working hours ({format12Hr(selectedDoctor.working_hours_start || '09:00')} - {format12Hr(selectedDoctor.working_hours_end || '17:00')}). All slots are either booked or past.
                   </div>
                 ) : (
                   <div className="space-y-4">
