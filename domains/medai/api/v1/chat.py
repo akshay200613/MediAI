@@ -185,20 +185,39 @@ async def chat(
     current_user: CurrentUser = Depends(require_permission(Permission.USE_AI_CHAT)),
     session: AsyncSession = Depends(get_db),
 ) -> DataResponse[ChatResponse]:
+    from domains.medai.models.chat_history import ChatSession
+
     session_id = message.session_id or str(uuid.uuid4())
     session_mgr = SessionManager(session)
 
-    # Fast-path for simple small talk (bypasses LLM and LangGraph completely)
+    # 1. Strict Session Authorization Guard
+    if message.session_id:
+        stmt_chk = select(ChatSession).where(ChatSession.id == message.session_id)
+        res_chk = await session.execute(stmt_chk)
+        existing_session = res_chk.scalar_one_or_none()
+        if existing_session and existing_session.user_id != current_user.user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Unauthorized access: Session belongs to another patient."
+            )
+
+    # Resolve personalized user first name from account context
+    user_first_name = "there"
+    if current_user.full_name and "@" not in current_user.full_name:
+        user_first_name = current_user.full_name.strip().split()[0]
+    elif current_user.email:
+        user_first_name = current_user.email.split("@")[0].capitalize()
+
+    # Fast-path for simple small talk (personalized with user's actual account name)
     import re
     user_msg_lower = message.content.strip().lower()
-    # Remove punctuation for matching
     clean_msg = re.sub(r'[^\w\s]', '', user_msg_lower).strip()
-    
+
     small_talk_greetings = {"hi", "hello", "hey", "good morning", "good evening", "good afternoon"}
     small_talk_thanks = {"thanks", "thank you", "thank u", "thx"}
-    
+
     if clean_msg in small_talk_greetings:
-        reply = "Hello! I am MedAI, your intelligent clinic assistant. How can I assist you with medical questions, appointment scheduling, or hospital information today?"
+        reply = f"Hey {user_first_name}! I am MedAI, your intelligent clinical assistant. How can I help you with medical questions or appointment booking today?"
         await session_mgr.add_exchange(current_user.user_id, session_id, message.content, reply)
         return DataResponse(
             data=ChatResponse(
@@ -211,7 +230,7 @@ async def chat(
             message="Chat processed successfully",
         )
     elif clean_msg in small_talk_thanks:
-        reply = "You're very welcome! Let me know if you need any further assistance."
+        reply = f"You're very welcome, {user_first_name}! Let me know if you need any further assistance."
         await session_mgr.add_exchange(current_user.user_id, session_id, message.content, reply)
         return DataResponse(
             data=ChatResponse(
@@ -224,13 +243,13 @@ async def chat(
             message="Chat processed successfully",
         )
 
-    # Load conversation history for current session
+    # Load conversation history strictly for this authenticated user and session
     history = await session_mgr.get_last_n_messages(current_user.user_id, session_id, n=10)
-    
-    # Load cross-session memory for the patient
+
+    # Load cross-session memory strictly for this authenticated patient
     long_term_memory = await session_mgr.get_recent_history_cross_session(current_user.user_id, n=20)
 
-    # Extract and update patient details if user is patient
+    # Extract and update patient details if message contains info
     updated_fields = {}
     missing_fields = []
     patient_name = current_user.full_name
@@ -243,8 +262,8 @@ async def chat(
             user_id=current_user.user_id,
             email=current_user.email,
         )
-        
-        # Check missing fields
+
+        # Check DB single source of truth for patient record
         pat_res = await session.execute(
             select(Patient).where(
                 (Patient.email == current_user.email) | (Patient.user_id == str(current_user.user_id)),
@@ -254,18 +273,16 @@ async def chat(
         pat = pat_res.scalar_one_or_none()
         if pat:
             patient_name = pat.full_name
+            if pat.first_name and "@" not in pat.first_name:
+                user_first_name = pat.first_name
+
+            # Check mandatory booking fields on DB model
             if not pat.date_of_birth:
                 missing_fields.append("Date of Birth")
             if not pat.gender:
                 missing_fields.append("Gender")
-            if not pat.blood_group:
-                missing_fields.append("Blood Group")
-            if not pat.address:
-                missing_fields.append("Street Address")
-            if not pat.emergency_contact_name:
-                missing_fields.append("Emergency Contact Name")
-            if not pat.emergency_contact_phone:
-                missing_fields.append("Emergency Contact Phone")
+            if not pat.phone or pat.phone == "000-000-0000":
+                missing_fields.append("Phone Number")
 
     from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
     from core.ai.graph.builder import build_medai_graph
@@ -273,27 +290,34 @@ async def chat(
 
     # Map history to Langchain messages
     langchain_messages = []
-    
-    # Inject current date context
-    current_date = datetime.now().strftime("%A, %B %d, %Y %H:%M")
-    langchain_messages.append(SystemMessage(content=f"[System Note: Current date and time is {current_date}. Use this to resolve relative dates like 'tomorrow'.]"))
 
-    
+    # Inject current date & personalized patient name context
+    current_date = datetime.now().strftime("%A, %B %d, %Y %H:%M")
+    langchain_messages.append(
+        SystemMessage(
+            content=f"[System Note: Current date is {current_date}. Authenticated patient name is '{patient_name}' (First Name: '{user_first_name}'). ALWAYS greet and address the patient by their actual name '{user_first_name}' rather than generic 'there'.]"
+        )
+    )
+
     # Inject long-term memory summary as a system message
     if long_term_memory:
         memory_str = "\n".join([f"{m.role}: {m.content}" for m in long_term_memory])
-        langchain_messages.append(SystemMessage(content=f"[System Note: Patient's recent conversation history across past sessions (Long-Term Memory):\n{memory_str}\n]"))
-        
+        langchain_messages.append(
+            SystemMessage(content=f"[System Note: Patient's recent conversation history across past sessions (Long-Term Memory):\n{memory_str}\n]")
+        )
+
     for msg in history:
         if msg.role == "user":
             langchain_messages.append(HumanMessage(content=msg.content))
         else:
             langchain_messages.append(AIMessage(content=msg.content))
-            
-    # Inject missing fields instruction as a system message if needed
+
+    # Inject missing fields instruction if any mandatory profile fields are missing
     if missing_fields:
         missing_str = ", ".join(missing_fields)
-        langchain_messages.append(SystemMessage(content=f"[System Note: Patient profile is missing {missing_str}. Please politely ask for these details.]"))
+        langchain_messages.append(
+            SystemMessage(content=f"[System Note: Patient profile is missing mandatory booking fields: {missing_str}.]")
+        )
 
     langchain_messages.append(HumanMessage(content=message.content))
 
@@ -323,10 +347,12 @@ async def chat(
             "updated_fields": updated_fields,
             "missing_fields": missing_fields,
             "patient_name": patient_name,
+            "first_name": user_first_name,
         }
     }
-    
-    config = {"configurable": {"thread_id": session_id}}
+
+    # Thread ID prefixed with user_id to guarantee multi-patient state isolation
+    config = {"configurable": {"thread_id": f"{current_user.user_id}:{session_id}"}}
     try:
         result = await graph.ainvoke(state, config=config)
     except AIServiceUnavailableError as exc:
@@ -334,7 +360,7 @@ async def chat(
     except Exception as exc:
         logger.error(f"Graph invocation failed: {exc}")
         raise HTTPException(status_code=503, detail=AIServiceUnavailableError.USER_MESSAGE)
-    
+
     final_response_text = result.get("final_response")
     if not final_response_text and result.get("messages"):
         content = result["messages"][-1].content
@@ -350,15 +376,14 @@ async def chat(
             final_response_text = content
         else:
             final_response_text = str(content)
-            
+
     if not isinstance(final_response_text, str):
         final_response_text = str(final_response_text or "")
-        
-    # Safely handle tool calls extraction from the last AIMessage if present
+
     tool_calls = []
     if result.get("messages") and hasattr(result["messages"][-1], "tool_calls"):
         tool_calls = result["messages"][-1].tool_calls
-        
+
     final_response_text = final_response_text.strip()
     if not final_response_text:
         if tool_calls:
@@ -367,8 +392,9 @@ async def chat(
         else:
             final_response_text = "I have processed your request."
 
-    # Persist exchange
-    await session_mgr.add_exchange(current_user.user_id, session_id, message.content, final_response_text)
+    # Persist exchange to database
+    session_title = message.content[:32] + ("..." if len(message.content) > 32 else "")
+    await session_mgr.add_exchange(current_user.user_id, session_id, message.content, final_response_text, title=session_title)
 
     return DataResponse(
         data=ChatResponse(
@@ -392,7 +418,7 @@ async def clear_session(
     current_user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> None:
-    """Clear the conversation history for a session."""
+    """Clear the conversation history for a session after verifying ownership."""
     session_mgr = SessionManager(session)
     await session_mgr.clear(current_user.user_id, session_id)
 
@@ -405,19 +431,32 @@ async def get_sessions(
     current_user: CurrentUser = Depends(require_permission(Permission.USE_AI_CHAT)),
     session: AsyncSession = Depends(get_db),
 ):
-    """Retrieve all chat sessions for the current patient."""
-    from domains.medai.models.chat_history import ChatSession
-    
+    """Retrieve all chat sessions strictly belonging to the current patient."""
+    from domains.medai.models.chat_history import ChatSession, ChatMessage
+    from sqlalchemy.orm import selectinload
+
     stmt = (
         select(ChatSession)
+        .options(selectinload(ChatSession.messages))
         .where(ChatSession.user_id == current_user.user_id)
         .order_by(ChatSession.updated_at.desc())
     )
     result = await session.execute(stmt)
     sessions = result.scalars().all()
-    
+
+    session_list = []
+    for s in sessions:
+        last_msg = s.messages[-1].content if s.messages else ""
+        session_list.append({
+            "id": s.id,
+            "title": s.title,
+            "last_message": last_msg,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+        })
+
     return DataResponse(
-        data=[{"id": s.id, "title": s.title, "updated_at": s.updated_at} for s in sessions],
+        data=session_list,
         message="Fetched chat sessions successfully",
     )
 
@@ -431,17 +470,23 @@ async def get_session_messages(
     current_user: CurrentUser = Depends(require_permission(Permission.USE_AI_CHAT)),
     session: AsyncSession = Depends(get_db),
 ):
-    """Retrieve all messages for a specific session."""
+    """Retrieve all messages for a specific session after verifying patient ownership."""
     from domains.medai.models.chat_history import ChatSession, ChatMessage
-    
-    # Verify session belongs to user
-    stmt_sess = select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == current_user.user_id)
+
+    # Explicit patient ownership verification
+    stmt_sess = select(ChatSession).where(
+        ChatSession.id == session_id,
+        ChatSession.user_id == current_user.user_id,
+    )
     result_sess = await session.execute(stmt_sess)
     chat_session = result_sess.scalar_one_or_none()
-    
+
     if not chat_session:
-        return DataResponse(success=False, message="Session not found or unauthorized", data=[])
-        
+        raise HTTPException(
+            status_code=403,
+            detail="Session not found or unauthorized access"
+        )
+
     stmt_msg = (
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
@@ -449,8 +494,13 @@ async def get_session_messages(
     )
     result_msg = await session.execute(stmt_msg)
     messages = result_msg.scalars().all()
-    
+
     return DataResponse(
-        data=[{"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at} for m in messages],
+        data=[{
+            "id": m.id,
+            "role": m.role,
+            "content": m.content,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        } for m in messages],
         message="Fetched messages successfully",
     )

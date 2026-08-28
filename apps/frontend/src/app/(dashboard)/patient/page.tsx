@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import apiClient from '@/lib/api/client'
 import { useAuth } from '@/lib/auth/context'
+import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
 import { staggerContainer, fadeSlideUp } from '@/lib/motion'
 
 function StatCard({
@@ -76,26 +77,39 @@ export default function PatientDashboardPage() {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 
-  useEffect(() => {
-    const fetchAppointments = async () => {
-      try {
-        setLoading(true)
-        const res = await apiClient.get('/medai/appointments')
-        setAppointments(res.data?.data || [])
-      } catch (err) {
-        console.error('Failed to fetch patient appointments', err)
-      } finally {
-        setLoading(false)
-      }
+  const fetchAppointments = async () => {
+    try {
+      setLoading(true)
+      const res = await apiClient.get('/medai/appointments')
+      setAppointments(res.data?.data || [])
+    } catch (err) {
+      console.error('Failed to fetch patient appointments', err)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchAppointments()
   }, [])
+
+  // Real-time synchronization when doctor completes visit or updates notes
+  useAppointmentSocket((event) => {
+    if (
+      event.event === 'appointment_updated' ||
+      event.event === 'appointment_created' ||
+      event.event === 'appointment_cancelled'
+    ) {
+      fetchAppointments()
+    }
+  })
 
   const upcoming = appointments.filter(
     (a) => a.status === 'scheduled' || a.status === 'confirmed'
   )
   const completed = appointments.filter((a) => a.status === 'completed')
   const cancelled = appointments.filter((a) => a.status === 'cancelled')
+  const recentCompletedWithNotes = completed.filter((a) => !!a.notes).slice(0, 2)
 
   return (
     <motion.div
@@ -247,6 +261,46 @@ export default function PatientDashboardPage() {
           )}
         </div>
       </motion.div>
+
+      {/* ── Recent Consultation Notes & Prescriptions ────────────────────── */}
+      {recentCompletedWithNotes.length > 0 && (
+        <motion.div variants={fadeSlideUp} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <h2 className="text-sm font-semibold text-slate-200">Recent Completed Consultation Records</h2>
+            </div>
+            <Link href="/patient/appointments" className="text-xs text-teal-400 hover:underline flex items-center gap-1">
+              View All Records →
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {recentCompletedWithNotes.map((c) => (
+              <Link
+                key={c.id}
+                href="/patient/appointments"
+                className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-teal-500/40 transition-all block group"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {new Date(c.scheduled_at).toLocaleDateString()}
+                  </span>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 px-2 py-0.5 rounded font-medium flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Notes Available
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 line-clamp-2 italic group-hover:text-slate-100">
+                  {c.notes}
+                </p>
+                <div className="mt-3 text-[11px] text-teal-400 group-hover:underline flex items-center gap-1 font-medium">
+                  Review Clinical Notes &amp; Prescription →
+                </div>
+              </Link>
+            ))}
+          </div>
+        </motion.div>
+      )}
     </motion.div>
   )
 }

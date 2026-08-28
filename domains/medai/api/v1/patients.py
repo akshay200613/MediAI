@@ -17,6 +17,66 @@ from domains.medai.services.patient_service import PatientService
 router = APIRouter()
 
 
+@router.get(
+    "/me/profile-status",
+    summary="Get current patient profile completeness status",
+)
+async def get_my_profile_status(
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    svc = PatientService(session)
+    patient = await svc.get_patient_by_user_id(current_user.user_id, user_email=current_user.email)
+    completeness = PatientService.check_profile_completeness(patient)
+    return DataResponse(
+        data={
+            "patient": patient,
+            "is_complete": completeness["is_complete"],
+            "missing_fields": completeness["missing_fields"],
+            "message": completeness["message"],
+        }
+    )
+
+
+@router.patch(
+    "/me",
+    response_model=DataResponse[PatientOut],
+    summary="Update current patient's own profile",
+)
+async def update_my_profile(
+    data: PatientUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> DataResponse[PatientOut]:
+    svc = PatientService(session)
+    patient = await svc.get_patient_by_user_id(current_user.user_id, user_email=current_user.email)
+    if not patient:
+        # Create initial patient record for logged in user
+        names = (current_user.full_name or "Patient User").split(" ", 1)
+        first_name = data.first_name or (names[0] if names[0] else "Patient")
+        last_name = data.last_name or (names[1] if len(names) > 1 and names[1].strip() else "User")
+        patient = await svc.create_patient(
+            PatientCreate(
+                first_name=first_name,
+                last_name=last_name,
+                email=current_user.email,
+                phone=data.phone or "000-000-0000",
+                date_of_birth=data.date_of_birth,
+                gender=data.gender,
+                blood_group=data.blood_group,
+                address=data.address,
+                city=data.city,
+                allergies=data.allergies,
+                chronic_conditions=data.chronic_conditions,
+                user_id=current_user.user_id,
+            )
+        )
+        return DataResponse(data=patient, message="Medical profile created successfully")
+
+    updated = await svc.update_patient(patient.id, data)
+    return DataResponse(data=updated, message="Medical profile updated successfully")
+
+
 @router.post(
     "",
     response_model=DataResponse[PatientOut],

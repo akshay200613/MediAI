@@ -51,7 +51,86 @@ export default function PatientBookPage() {
       }
     }
     fetchDoctors()
+    fetchProfileStatus()
   }, [])
+
+  // Patient Profile Completeness State
+  const [profileStatus, setProfileStatus] = useState<{
+    is_complete: boolean
+    missing_fields: string[]
+    message: string
+    patient: any
+  } | null>(null)
+  const [showProfileCard, setShowProfileCard] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
+
+  const [profPhone, setProfPhone] = useState('')
+  const [profGender, setProfGender] = useState('male')
+  const [profDob, setProfDob] = useState('')
+  const [profBloodGroup, setProfBloodGroup] = useState('')
+  const [profAllergies, setProfAllergies] = useState('')
+  const [profChronicConditions, setProfChronicConditions] = useState('')
+
+  const fetchProfileStatus = async () => {
+    try {
+      const res = await apiClient.get('/medai/patients/me/profile-status')
+      const data = res.data?.data
+      if (data) {
+        setProfileStatus(data)
+        const pat = data.patient
+        if (pat) {
+          if (pat.phone && pat.phone !== '000-000-0000') setProfPhone(pat.phone)
+          if (pat.gender) setProfGender(pat.gender)
+          if (pat.date_of_birth) setProfDob(pat.date_of_birth)
+          if (pat.blood_group) setProfBloodGroup(pat.blood_group)
+          if (pat.allergies) setProfAllergies(pat.allergies)
+          if (pat.chronic_conditions) setProfChronicConditions(pat.chronic_conditions)
+        }
+        if (!data.is_complete) {
+          setShowProfileCard(true)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch profile status', err)
+    }
+  }
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!profPhone || profPhone.trim() === '000-000-0000' || !profGender || !profDob) {
+      setBookingStatus({
+        success: false,
+        message: 'Please fill in all mandatory profile fields: Phone Number, Gender, and Date of Birth.',
+      })
+      return
+    }
+
+    try {
+      setSavingProfile(true)
+      await apiClient.patch('/medai/patients/me', {
+        phone: profPhone,
+        gender: profGender,
+        date_of_birth: profDob,
+        blood_group: profBloodGroup || undefined,
+        allergies: profAllergies || undefined,
+        chronic_conditions: profChronicConditions || undefined,
+      })
+      setBookingStatus({
+        success: true,
+        message: 'Medical profile saved successfully! You may now proceed with booking.',
+      })
+      setShowProfileCard(false)
+      await fetchProfileStatus()
+    } catch (err: any) {
+      console.error('Failed to save profile', err)
+      setBookingStatus({
+        success: false,
+        message: err.response?.data?.detail || 'Failed to save profile details.',
+      })
+    } finally {
+      setSavingProfile(false)
+    }
+  }
 
   // Fetch booked slots for the selected doctor across the next 14 days
   const fetchBookedSlots = async () => {
@@ -362,6 +441,93 @@ export default function PatientBookPage() {
           )}
           <span>{bookingStatus.message}</span>
         </div>
+      )}
+
+      {showProfileCard && (
+        <form onSubmit={handleSaveProfile} className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-teal-950/40 border border-teal-500/40 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-teal-400 shrink-0" />
+              <div>
+                <h3 className="text-sm font-bold text-slate-100">Complete Your Medical Profile</h3>
+                <p className="text-[11px] text-teal-300">Mandatory details (Phone, Gender, Date of Birth) are required before booking.</p>
+              </div>
+            </div>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+              Required
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-slate-300 mb-1 block">Phone Number *</label>
+              <input
+                type="tel"
+                required
+                placeholder="e.g. +91 9876543210"
+                value={profPhone}
+                onChange={(e) => setProfPhone(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-slate-300 mb-1 block">Gender *</label>
+              <select
+                value={profGender}
+                onChange={(e) => setProfGender(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-slate-300 mb-1 block">Date of Birth *</label>
+              <input
+                type="date"
+                required
+                value={profDob}
+                onChange={(e) => setProfDob(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            <div>
+              <label className="text-[11px] font-medium text-slate-400 mb-1 block">Blood Group (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. O+, A+"
+                value={profBloodGroup}
+                onChange={(e) => setProfBloodGroup(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-[11px] font-medium text-slate-400 mb-1 block">Allergies / Relevant History (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. Penicillin allergy, Hypertension"
+                value={profAllergies}
+                onChange={(e) => setProfAllergies(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="submit"
+              disabled={savingProfile}
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-teal-900/30 flex items-center gap-2 transition-colors disabled:opacity-50"
+            >
+              {savingProfile ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              Save Medical Profile
+            </button>
+          </div>
+        </form>
       )}
 
       <div className="space-y-4">

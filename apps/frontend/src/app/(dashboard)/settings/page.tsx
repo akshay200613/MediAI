@@ -176,9 +176,17 @@ export default function AccountSettingsPage() {
       if (refreshUser) refreshUser()
       
       if (role === 'patient' || role === 'user') {
-        setTimeout(() => {
-          router.push('/patient?profile_updated=true')
-        }, 1000)
+        const pendingSessionId = typeof window !== 'undefined' ? sessionStorage.getItem('pending_booking_session_id') : null
+        if (pendingSessionId) {
+          toast.success('Profile updated! Resuming your appointment booking...')
+          setTimeout(() => {
+            router.push(`/patient/chat?resume_session=${encodeURIComponent(pendingSessionId)}`)
+          }, 800)
+        } else {
+          setTimeout(() => {
+            router.push('/patient?profile_updated=true')
+          }, 1000)
+        }
       }
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to update profile')

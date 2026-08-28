@@ -339,10 +339,33 @@ async def record_consultation_notes(
     except Exception as e:
         chunks_indexed = 0
 
+    # Broadcast real-time WebSocket event to doctor, admin, and patient portals
+    try:
+        from domains.medai.websockets.manager import manager
+        await manager.notify_appointment_event(
+            "appointment_updated",
+            {
+                "id": str(appt.id),
+                "patient_id": str(appt.patient_id),
+                "doctor_id": str(appt.doctor_id),
+                "status": appt.status.value if hasattr(appt.status, "value") else str(appt.status),
+                "notes": full_note,
+                "appointment_type": appt.appointment_type.value if hasattr(appt.appointment_type, "value") else str(appt.appointment_type),
+                "scheduled_at": appt.scheduled_at.isoformat() if hasattr(appt.scheduled_at, "isoformat") else str(appt.scheduled_at),
+                "duration_minutes": appt.duration_minutes,
+                "reason": appt.reason,
+            },
+            patient_id=str(appt.patient_id),
+            doctor_id=str(appt.doctor_id),
+        )
+    except Exception:
+        pass
+
     return DataResponse(
         data={
             "appointment_id": str(appt.id),
-            "status": appt.status,
+            "status": appt.status.value if hasattr(appt.status, "value") else str(appt.status),
+            "notes": full_note,
             "chunks_indexed": chunks_indexed,
         },
         message="Consultation notes recorded and indexed into RAG pipeline",

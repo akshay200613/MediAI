@@ -133,15 +133,38 @@ export default function DoctorAppointmentsPage() {
   }, [])
 
   // Live WebSocket Realtime Patient Queue updates
-  useAppointmentSocket(() => {
-    fetchAppointments()
+  useAppointmentSocket((event) => {
+    if (
+      event.event === 'appointment_updated' ||
+      event.event === 'appointment_created' ||
+      event.event === 'appointment_cancelled'
+    ) {
+      fetchAppointments()
+    }
   })
 
   const handleSelectAppt = async (appt: Appointment) => {
     setSelectedAppt(appt)
     setRagSummary(null)
     setSaveStatus(null)
-    setNotesText(appt.notes || '')
+
+    // Parse existing notes and prescription if formatted
+    if (appt.notes) {
+      if (appt.notes.includes('Consultation Notes:')) {
+        const parts = appt.notes.split('\nPrescription:')
+        const notePart = parts[0].replace('Consultation Notes:', '').trim()
+        const presPart = parts[1] ? parts[1].trim() : ''
+        setNotesText(notePart)
+        setPrescriptionText(presPart)
+      } else {
+        setNotesText(appt.notes)
+        setPrescriptionText('')
+      }
+    } else {
+      setNotesText('')
+      setPrescriptionText('')
+    }
+
     setPatientDetail(null)
     setPatientHistory([])
     setHistoryOpen(false)
@@ -187,15 +210,26 @@ export default function DoctorAppointmentsPage() {
     setSavingNotes(true)
     setSaveStatus(null)
     try {
-      await apiClient.post(`/medai/appointments/${selectedAppt.id}/notes`, {
+      const res = await apiClient.post(`/medai/appointments/${selectedAppt.id}/notes`, {
         notes: notesText,
         prescription: prescriptionText,
       })
-      setSaveStatus('Consultation notes saved and indexed into RAG knowledge base!')
+      const fullSavedNote = res.data?.data?.notes || (prescriptionText ? `Consultation Notes: ${notesText}\nPrescription: ${prescriptionText}` : `Consultation Notes: ${notesText}`)
+      setSaveStatus('Consultation visit completed and indexed into RAG knowledge base & patient records!')
       await fetchAppointments()
-      setSelectedAppt((prev) => prev ? { ...prev, status: 'completed', notes: notesText } : prev)
+      setSelectedAppt((prev) => prev ? { ...prev, status: 'completed', notes: fullSavedNote } : prev)
+
+      // Refresh patient history to show the newly completed consultation immediately
+      if (selectedAppt.patient_id) {
+        try {
+          const histRes = await apiClient.get(`/medai/doctor-dashboard/patients/${selectedAppt.patient_id}/history`)
+          if (histRes.data?.data?.appointment_history) {
+            setPatientHistory(histRes.data.data.appointment_history)
+          }
+        } catch {}
+      }
     } catch (err: any) {
-      setSaveStatus(`Failed to save notes: ${err.message}`)
+      setSaveStatus(`Failed to save notes: ${err.message || 'Error occurred'}`)
     } finally {
       setSavingNotes(false)
     }

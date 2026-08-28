@@ -195,7 +195,14 @@ export const ChatSidebar: React.FC = () => {
                                   </button>
                                 </form>
                               ) : (
-                                <span className="truncate text-xs">{session.title}</span>
+                                <div className="flex flex-col min-w-0 flex-1">
+                                  <span className="truncate text-xs font-semibold text-slate-200">{session.title}</span>
+                                  <span className="truncate text-[10px] text-slate-400 mt-0.5">
+                                    {session.messages && session.messages.length > 0
+                                      ? session.messages[session.messages.length - 1].content.slice(0, 38)
+                                      : new Date(session.updatedAt || session.createdAt).toLocaleDateString()}
+                                  </span>
+                                </div>
                               )}
                             </div>
 

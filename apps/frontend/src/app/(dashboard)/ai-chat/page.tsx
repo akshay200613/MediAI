@@ -42,16 +42,43 @@ export default function AIChatPage() {
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const messages = activeSession?.messages || []
 
+  // Load persistent sessions on mount when user is authenticated
+  useEffect(() => {
+    if (user) {
+      useChatStore.getState().fetchSessions()
+    }
+  }, [user])
+
+  // Handle Booking Resumption after Profile Completion
   useEffect(() => {
     if (!user) return
 
+    const resumeSessionId = searchParams.get('resume_session') || (typeof window !== 'undefined' ? sessionStorage.getItem('pending_booking_session_id') : null)
+
+    if (resumeSessionId) {
+      // Clear pending storage keys
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pending_booking_session_id')
+        sessionStorage.removeItem('pending_booking_state')
+      }
+      
+      // Select the active session and send seamless resumption message
+      useChatStore.getState().selectSession(resumeSessionId).then(() => {
+        setTimeout(() => {
+          sendMessage("Welcome back! My profile has been updated. Let's continue booking my appointment.")
+        }, 500)
+      })
+      return
+    }
+
+    // Default welcoming message personalized with user's actual account name
     if (sessions.length === 0 || !activeSessionId) {
-      const name = firstName || displayName || 'there'
+      const name = firstName || displayName
       const sessionId = useChatStore.getState().createSession()
       
       const welcomeMsg = collectProfile
-        ? `Hello ${name}! Let's get your medical profile completed so you can book your doctor consultation. I'll need to collect a few details: Date of Birth, Gender, Blood Group, Address, and Emergency Contact. Let's start with your Date of Birth (YYYY-MM-DD) and Gender. What are they?`
-        : `Hello ${name}! I'm your MediAI Clinical Assistant. How can I help you today?`
+        ? `Hey ${name}! Let's get your medical profile completed so you can book your consultation. What is your Date of Birth (YYYY-MM-DD) and Gender?`
+        : `Hey ${name}! How can I help you with medical questions or appointment booking today?`
 
       useChatStore.setState((state) => ({
         sessions: state.sessions.map((s) => {
@@ -72,7 +99,7 @@ export default function AIChatPage() {
         }),
       }))
     }
-  }, [user, sessions.length, activeSessionId, collectProfile, firstName, displayName])
+  }, [user, sessions.length, activeSessionId, collectProfile, firstName, displayName, searchParams])
 
   // Global shortcut: Ctrl+N / Cmd+N for new consultation session
   useEffect(() => {

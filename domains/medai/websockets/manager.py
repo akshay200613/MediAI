@@ -121,14 +121,23 @@ class ConnectionManager:
             "data": appointment_data,
         }
 
-        # Notify admins, super_admins, target patient, and target doctor
+        # Notify admins, super_admins, all doctors, and the target patient
         target_sockets: set[str] = set()
         target_sockets.update(self.role_sockets.get("admin", set()))
         target_sockets.update(self.role_sockets.get("super_admin", set()))
-        if patient_id and str(patient_id) in self.patient_sockets:
-            target_sockets.update(self.patient_sockets[str(patient_id)])
-        if doctor_id and str(doctor_id) in self.doctor_sockets:
-            target_sockets.update(self.doctor_sockets[str(doctor_id)])
+        target_sockets.update(self.role_sockets.get("doctor", set()))
+        if patient_id:
+            pid_str = str(patient_id)
+            if pid_str in self.patient_sockets:
+                target_sockets.update(self.patient_sockets[pid_str])
+            if pid_str in self.user_sockets:
+                target_sockets.update(self.user_sockets[pid_str])
+        if doctor_id:
+            did_str = str(doctor_id)
+            if did_str in self.doctor_sockets:
+                target_sockets.update(self.doctor_sockets[did_str])
+            if did_str in self.user_sockets:
+                target_sockets.update(self.user_sockets[did_str])
 
         await self.broadcast_event(payload, target_sockets)
 

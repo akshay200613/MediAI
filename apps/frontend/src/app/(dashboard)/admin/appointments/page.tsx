@@ -1,7 +1,26 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Calendar, Search, Loader2, XCircle, ArrowUpDown, Filter, CheckCircle2, AlertCircle, RefreshCw, User, CheckSquare, Square } from 'lucide-react'
+import {
+  Calendar,
+  Search,
+  Loader2,
+  XCircle,
+  ArrowUpDown,
+  Filter,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  User,
+  CheckSquare,
+  Square,
+  FileText,
+  Pill,
+  Sparkles,
+  Stethoscope,
+  Activity,
+  X,
+} from 'lucide-react'
 import apiClient from '@/lib/api/client'
 import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
 
@@ -16,6 +35,7 @@ export default function AdminAppointmentsPage() {
   const [bulkCancelling, setBulkCancelling] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [selectedNotesAppt, setSelectedNotesAppt] = useState<any | null>(null)
 
   // Filtering & Sorting State
   const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -433,7 +453,7 @@ export default function AdminAppointmentsPage() {
                     </td>
                     <td className="p-3.5">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${
                           isCompleted
                             ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
                             : isCancelled
@@ -443,10 +463,27 @@ export default function AdminAppointmentsPage() {
                             : 'bg-teal-500/10 text-teal-300 border-teal-500/20'
                         }`}
                       >
+                        {isCompleted && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
                         {appt.status}
                       </span>
                     </td>
-                    <td className="p-3.5 text-right">
+                    <td className="p-3.5 text-right space-x-2">
+                      {isCompleted && appt.notes && (
+                        <button
+                          onClick={() => setSelectedNotesAppt({
+                            ...appt,
+                            doctor_name: doc ? `Dr. ${doc.first_name} ${doc.last_name}` : 'Specialist',
+                            doctor_specialty: doc?.specialty || 'General',
+                            patient_name: pat ? (pat.full_name || `${pat.first_name || ''} ${pat.last_name || ''}`.trim()) : 'Patient',
+                            patient_email: pat?.email || pat?.phone || '',
+                          })}
+                          className="px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 font-medium text-[11px] inline-flex items-center gap-1 transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-teal-400" />
+                          View Notes
+                        </button>
+                      )}
+
                       {canCancel ? (
                         <button
                           onClick={() => handleAdminCancel(appt.id)}
@@ -460,9 +497,9 @@ export default function AdminAppointmentsPage() {
                           )}
                           Cancel
                         </button>
-                      ) : (
+                      ) : !isCompleted ? (
                         <span className="text-[11px] text-slate-600 italic">No actions</span>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 )
@@ -471,6 +508,67 @@ export default function AdminAppointmentsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* ── Admin Consultation Notes View Modal ── */}
+      {selectedNotesAppt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-5">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400">
+                    <Stethoscope className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-100">Consultation Notes &amp; Clinical Summary</h3>
+                    <p className="text-xs text-teal-400 font-medium">{selectedNotesAppt.doctor_name} ({selectedNotesAppt.doctor_specialty})</p>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Patient: <span className="font-semibold text-slate-200">{selectedNotesAppt.patient_name}</span> ({selectedNotesAppt.patient_email})
+                </p>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  Scheduled: {new Date(selectedNotesAppt.scheduled_at).toLocaleString()}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedNotesAppt(null)}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950 border border-indigo-500/30 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-indigo-300">
+                <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+                <span>Indexed in RAG Knowledge Base</span>
+              </div>
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">
+                Status: Completed
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-indigo-400" /> Recorded Notes &amp; Prescription
+              </label>
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 leading-relaxed font-sans whitespace-pre-line">
+                {selectedNotesAppt.notes}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end border-t border-slate-800 pt-4">
+              <button
+                onClick={() => setSelectedNotesAppt(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

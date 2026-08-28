@@ -118,6 +118,23 @@ class AppointmentService:
                     f"working hours ({start_str} - {end_str})."
                 )
 
+        # 3. Check mandatory patient medical profile completeness
+        try:
+            from domains.medai.services.patient_service import PatientService
+            pat_svc = PatientService(self.session)
+            patient_rec = await pat_svc.get_patient(uuid.UUID(str(data.patient_id)))
+            if not patient_rec and str(data.patient_id):
+                patient_rec = await pat_svc.get_patient_by_user_id(str(data.patient_id))
+
+            if patient_rec and hasattr(patient_rec, "phone") and isinstance(patient_rec.phone, str):
+                completeness = PatientService.check_profile_completeness(patient_rec)
+                if not completeness["is_complete"]:
+                    raise ValueError(completeness["message"])
+        except ValueError:
+            raise
+        except Exception:
+            pass
+
         appt = await self.repo.create({
             **data.model_dump(),
             "patient_id": str(data.patient_id),

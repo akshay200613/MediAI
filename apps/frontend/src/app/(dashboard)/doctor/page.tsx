@@ -81,34 +81,42 @@ export default function DoctorDashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [adminNotice, setAdminNotice] = useState<string | null>(null)
 
+  const fetchData = async () => {
+    try {
+      setLoading(true)
+      const [todayRes, allRes] = await Promise.allSettled([
+        apiClient.get('/medai/doctor-dashboard/today'),
+        apiClient.get('/medai/appointments'),
+      ])
+
+      if (todayRes.status === 'fulfilled') {
+        setData(todayRes.value.data?.data || null)
+      }
+      if (allRes.status === 'fulfilled') {
+        setAllAppointments(allRes.value.data?.data || [])
+      }
+    } catch (err: any) {
+      setError('Failed to load dashboard data')
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useAppointmentSocket((event) => {
     if (event.event === 'doctor_updated') {
       setAdminNotice(event.message || 'Admin has updated your profile details and working schedule.')
+      fetchData()
+    } else if (
+      event.event === 'appointment_updated' ||
+      event.event === 'appointment_created' ||
+      event.event === 'appointment_cancelled'
+    ) {
+      fetchData()
     }
   })
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-        const [todayRes, allRes] = await Promise.allSettled([
-          apiClient.get('/medai/doctor-dashboard/today'),
-          apiClient.get('/medai/appointments'),
-        ])
-
-        if (todayRes.status === 'fulfilled') {
-          setData(todayRes.value.data?.data || null)
-        }
-        if (allRes.status === 'fulfilled') {
-          setAllAppointments(allRes.value.data?.data || [])
-        }
-      } catch (err: any) {
-        setError('Failed to load dashboard data')
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchData()
   }, [])
 

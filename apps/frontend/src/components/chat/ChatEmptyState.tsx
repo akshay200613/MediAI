@@ -96,7 +96,7 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({ onSelectPrompt, 
       >
         {userName ? (
           <>
-            Hello, <span className="text-teal-400">{userName}</span>! How can I help you today?
+            Hey <span className="text-teal-400">{userName}</span>! How can I help you today?
           </>
         ) : (
           'MediAI Clinical Assistant'
