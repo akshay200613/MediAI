@@ -70,6 +70,23 @@ async def login(
         str(user.id), user.email, user.role, user.full_name
     )
 
+    # Log successful login to Audit Trail
+    try:
+        from core.services.audit_service import log_audit_event
+        await log_audit_event(
+            session=session,
+            user_id=str(user.id),
+            user_name=user.full_name,
+            user_role=user.role,
+            action="USER_LOGIN",
+            resource_type="User",
+            resource_id=str(user.id),
+            details={"email": user.email, "role": user.role},
+        )
+        await session.commit()
+    except Exception:
+        pass
+
     from core.config.settings import settings
     return DataResponse(
         data=TokenResponse(
@@ -115,6 +132,23 @@ async def register(
         user_id=str(user.id),
     )
     session.add(pat)
+
+    # Log registration to Audit Trail
+    try:
+        from core.services.audit_service import log_audit_event
+        await log_audit_event(
+            session=session,
+            user_id=str(user.id),
+            user_name=data.full_name,
+            user_role="patient",
+            action="USER_REGISTER",
+            resource_type="User",
+            resource_id=str(user.id),
+            details={"email": data.email, "full_name": data.full_name},
+        )
+    except Exception:
+        pass
+
     await session.commit()
 
     return DataResponse(

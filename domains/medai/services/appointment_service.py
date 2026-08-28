@@ -141,6 +141,7 @@ class AppointmentService:
             "doctor_id": str(data.doctor_id),
         })
         await self.session.commit()
+        await self.session.refresh(appt)
         appointment_bookings_total.labels(outcome="success").inc()
         logger.info("Appointment created and committed to database", appt_id=str(appt.id))
 
@@ -179,11 +180,12 @@ class AppointmentService:
                 if sent:
                     appt.confirmation_email_sent = True
                     await self.session.commit()
+                    await self.session.refresh(appt)
                     logger.info("Confirmation email dispatched", recipient=patient_email, appt_id=str(appt.id))
         except Exception as email_err:
             logger.warning("Failed to send confirmation email", error=str(email_err), appt_id=str(appt.id))
 
-        out = AppointmentOut.model_validate(appt)
+        out = self._to_out(appt)
 
         # Broadcast real-time WebSocket event
         try:
@@ -239,23 +241,24 @@ class AppointmentService:
         except Exception:
             from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
+            d = getattr(appt, "__dict__", {})
             return AppointmentOut(
-                id=getattr(appt, "id", uuid.uuid4()),
-                patient_id=getattr(appt, "patient_id", uuid.uuid4()),
-                doctor_id=getattr(appt, "doctor_id", uuid.uuid4()),
-                appointment_type=getattr(appt, "appointment_type", "consultation") or "consultation",
-                status=getattr(appt, "status", "scheduled") or "scheduled",
-                scheduled_at=getattr(appt, "scheduled_at", None) or now,
-                duration_minutes=getattr(appt, "duration_minutes", 30) or 30,
-                reason=getattr(appt, "reason", None),
-                notes=getattr(appt, "notes", None),
-                ai_triage_summary=getattr(appt, "ai_triage_summary", None),
-                confirmation_email_sent=bool(getattr(appt, "confirmation_email_sent", False)),
-                reminder_email_sent=bool(getattr(appt, "reminder_email_sent", False)),
-                reminder_sent_at=getattr(appt, "reminder_sent_at", None),
-                is_deleted=bool(getattr(appt, "is_deleted", False)),
-                created_at=getattr(appt, "created_at", None) or getattr(appt, "scheduled_at", None) or now,
-                updated_at=getattr(appt, "updated_at", None) or getattr(appt, "scheduled_at", None) or now,
+                id=d.get("id") or getattr(appt, "id", uuid.uuid4()),
+                patient_id=d.get("patient_id") or getattr(appt, "patient_id", uuid.uuid4()),
+                doctor_id=d.get("doctor_id") or getattr(appt, "doctor_id", uuid.uuid4()),
+                appointment_type=d.get("appointment_type") or "consultation",
+                status=d.get("status") or "scheduled",
+                scheduled_at=d.get("scheduled_at") or now,
+                duration_minutes=d.get("duration_minutes") or 30,
+                reason=d.get("reason"),
+                notes=d.get("notes"),
+                ai_triage_summary=d.get("ai_triage_summary"),
+                confirmation_email_sent=bool(d.get("confirmation_email_sent", False)),
+                reminder_email_sent=bool(d.get("reminder_email_sent", False)),
+                reminder_sent_at=d.get("reminder_sent_at"),
+                is_deleted=bool(d.get("is_deleted", False)),
+                created_at=d.get("created_at") or now,
+                updated_at=d.get("updated_at") or now,
             )
 
     async def get_appointment(self, appt_id: uuid.UUID) -> AppointmentOut | None:

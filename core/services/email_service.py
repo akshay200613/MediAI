@@ -103,6 +103,15 @@ class EmailService:
             logger.error("Failed to send email via SMTP", to=to_email, error=str(exc))
             return False
 
+    def _format_doctor_name(self, doctor_name: str) -> str:
+        """Format doctor name cleanly, avoiding redundant 'Dr. Dr.' prefixes."""
+        name = (doctor_name or "Doctor").strip()
+        if name.lower().startswith("dr."):
+            return f"Dr. {name[3:].strip()}"
+        if name.lower().startswith("dr "):
+            return f"Dr. {name[3:].strip()}"
+        return f"Dr. {name}"
+
     # ── Template Builders ─────────────────────────────────────────────────────
 
     def render_confirmation_email(
@@ -119,7 +128,8 @@ class EmailService:
         Builds Subject and HTML body for immediate appointment booking confirmation.
         """
         date_str = self._format_datetime(scheduled_at)
-        subject = f"🏥 Appointment Confirmed: Dr. {doctor_name} – {date_str}"
+        formatted_doctor = self._format_doctor_name(doctor_name)
+        subject = f"🏥 Appointment Confirmed: {formatted_doctor} – {date_str}"
         type_display = (appointment_type or "Consultation").capitalize()
 
         reason_row = (
@@ -166,7 +176,7 @@ class EmailService:
                                 <table width="100%" border="0" cellspacing="0" cellpadding="0">
                                     <tr>
                                         <td style="padding: 10px 0; color: #64748b; font-size: 14px; border-bottom: 1px solid #e2e8f0;">Doctor:</td>
-                                        <td style="padding: 10px 0; color: #0f172a; font-size: 15px; font-weight: 600; text-align: right; border-bottom: 1px solid #e2e8f0;">Dr. {doctor_name}</td>
+                                        <td style="padding: 10px 0; color: #0f172a; font-size: 15px; font-weight: 600; text-align: right; border-bottom: 1px solid #e2e8f0;">{formatted_doctor}</td>
                                     </tr>
                                     <tr>
                                         <td style="padding: 10px 0; color: #64748b; font-size: 14px; border-bottom: 1px solid #e2e8f0;">Specialty:</td>
@@ -223,7 +233,8 @@ class EmailService:
         Builds Subject and HTML body for 30-minute upcoming appointment reminder.
         """
         date_str = self._format_datetime(scheduled_at)
-        subject = f"⏰ Reminder: Appointment with Dr. {doctor_name} in 30 minutes"
+        formatted_doctor = self._format_doctor_name(doctor_name)
+        subject = f"⏰ Reminder: Appointment with {formatted_doctor} in 30 minutes"
 
         html = f"""<!DOCTYPE html>
 <html>
@@ -250,7 +261,7 @@ class EmailService:
                         <td style="padding: 36px 40px;">
                             <h2 style="color: #0f172a; margin: 0 0 12px 0; font-size: 20px;">Hi {patient_name},</h2>
                             <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0;">
-                                This is a friendly reminder that your upcoming appointment with <strong>Dr. {doctor_name}</strong> will begin shortly.
+                                This is a friendly reminder that your upcoming appointment with <strong>{formatted_doctor}</strong> will begin shortly.
                             </p>
 
                             <!-- Details Card -->
@@ -258,7 +269,7 @@ class EmailService:
                                 <table width="100%" border="0" cellspacing="0" cellpadding="0">
                                     <tr>
                                         <td style="padding: 10px 0; color: #92400e; font-size: 14px; border-bottom: 1px solid #fde68a;">Doctor:</td>
-                                        <td style="padding: 10px 0; color: #78350f; font-size: 15px; font-weight: 600; text-align: right; border-bottom: 1px solid #fde68a;">Dr. {doctor_name} ({doctor_specialty})</td>
+                                        <td style="padding: 10px 0; color: #78350f; font-size: 15px; font-weight: 600; text-align: right; border-bottom: 1px solid #fde68a;">{formatted_doctor} ({doctor_specialty})</td>
                                     </tr>
                                     <tr>
                                         <td style="padding: 10px 0; color: #92400e; font-size: 14px; border-bottom: 1px solid #fde68a;">Scheduled At:</td>

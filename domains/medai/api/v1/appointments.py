@@ -62,6 +62,28 @@ async def book_appointment(
         status_code = status.HTTP_409_CONFLICT if "Double booking" in err_msg else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=err_msg)
 
+    # Log appointment booking to Audit Trail
+    try:
+        from core.services.audit_service import log_audit_event
+        await log_audit_event(
+            session=session,
+            user_id=str(current_user.user_id),
+            user_name=current_user.full_name,
+            user_role=current_user.role,
+            action="APPOINTMENT_BOOKED",
+            resource_type="Appointment",
+            resource_id=str(appt.id),
+            details={
+                "patient_id": str(appt.patient_id),
+                "doctor_id": str(appt.doctor_id),
+                "scheduled_at": appt.scheduled_at.isoformat() if hasattr(appt.scheduled_at, "isoformat") else str(appt.scheduled_at),
+                "reason": appt.reason,
+            },
+        )
+        await session.commit()
+    except Exception:
+        pass
+
     # Broadcast real-time WebSocket event
     try:
         from domains.medai.websockets.manager import manager
@@ -266,6 +288,25 @@ async def cancel_appointment(
     if not cancelled:
         raise HTTPException(status_code=500, detail="Failed to cancel appointment")
 
+    # Log cancellation to Audit Trail
+    try:
+        from core.services.audit_service import log_audit_event
+        await log_audit_event(
+            session=session,
+            user_id=str(current_user.user_id),
+            user_name=current_user.full_name,
+            user_role=current_user.role,
+            action="APPOINTMENT_CANCELLED",
+            resource_type="Appointment",
+            resource_id=str(cancelled.id),
+            details={
+                "patient_id": str(cancelled.patient_id),
+                "doctor_id": str(cancelled.doctor_id),
+            },
+        )
+    except Exception:
+        pass
+
     await session.commit()
     appointment_cancellations_total.labels(role=user_role).inc()
 
@@ -338,6 +379,28 @@ async def record_consultation_notes(
         )
     except Exception as e:
         chunks_indexed = 0
+
+    # Log consultation note saving to Audit Trail
+    try:
+        from core.services.audit_service import log_audit_event
+        await log_audit_event(
+            session=session,
+            user_id=str(current_user.user_id),
+            user_name=current_user.full_name,
+            user_role=current_user.role,
+            action="CONSULTATION_SAVED",
+            resource_type="Appointment",
+            resource_id=str(appt.id),
+            details={
+                "patient_id": str(appt.patient_id),
+                "doctor_id": str(appt.doctor_id),
+                "has_prescription": bool(prescription),
+                "chunks_indexed": chunks_indexed,
+            },
+        )
+        await session.commit()
+    except Exception:
+        pass
 
     # Broadcast real-time WebSocket event to doctor, admin, and patient portals
     try:

@@ -3,7 +3,7 @@ Admin API Endpoints – /api/v1/medai/admin
 Handles doctor approvals, audit log viewing, and system analytics.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -128,11 +128,11 @@ async def list_pending_doctors(
     "/doctors/{doctor_id}/approve",
     response_model=DataResponse[dict],
     summary="Approve a pending doctor signup",
-    dependencies=[Depends(require_permission(Permission.MANAGE_USERS))],
 )
 async def approve_doctor(
     doctor_id: str,
     session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_permission(Permission.MANAGE_USERS)),
 ) -> DataResponse[dict]:
     """Approve doctor registration: set User role='doctor', is_verified=True, Doctor is_available=True."""
     doc_res = await session.execute(select(Doctor).where(Doctor.id == doctor_id))
@@ -147,6 +147,23 @@ async def approve_doctor(
         user.is_verified = True
 
     doc.is_available = True
+
+    # Log approval to Audit Trail
+    try:
+        from core.services.audit_service import log_audit_event
+        await log_audit_event(
+            session=session,
+            user_id=str(current_user.user_id),
+            user_name=current_user.full_name,
+            user_role=current_user.role,
+            action="DOCTOR_APPROVED",
+            resource_type="Doctor",
+            resource_id=str(doc.id),
+            details={"doctor_name": doc.full_name, "specialty": doc.specialty, "email": doc.email},
+        )
+    except Exception:
+        pass
+
     await session.commit()
 
     return DataResponse(
@@ -159,11 +176,11 @@ async def approve_doctor(
     "/doctors/{doctor_id}",
     response_model=DataResponse[dict],
     summary="Delete a doctor account and linked user",
-    dependencies=[Depends(require_permission(Permission.MANAGE_USERS))],
 )
 async def delete_doctor_admin(
     doctor_id: str,
     session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_permission(Permission.MANAGE_USERS)),
 ) -> DataResponse[dict]:
     """Soft-delete a doctor record and deactivate their linked user account."""
     doc_res = await session.execute(select(Doctor).where(Doctor.id == doctor_id))
@@ -180,6 +197,22 @@ async def delete_doctor_admin(
         user.is_active = False
         user.is_deleted = True
 
+    # Log deletion to Audit Trail
+    try:
+        from core.services.audit_service import log_audit_event
+        await log_audit_event(
+            session=session,
+            user_id=str(current_user.user_id),
+            user_name=current_user.full_name,
+            user_role=current_user.role,
+            action="DOCTOR_DELETED",
+            resource_type="Doctor",
+            resource_id=str(doc.id),
+            details={"doctor_name": doc.full_name, "email": doc.email},
+        )
+    except Exception:
+        pass
+
     await session.commit()
 
     return DataResponse(
@@ -188,33 +221,92 @@ async def delete_doctor_admin(
     )
 
 
-
-
 @router.get(
     "/audit-logs",
-    response_model=DataResponse[list[dict]],
+    response_model=DataResponse[dict],
     summary="View system audit logs",
-    dependencies=[Depends(require_permission(Permission.VIEW_AUDIT_LOGS))],
 )
 async def get_audit_logs(
-    limit: int = 50,
+    limit: int = Query(100, ge=1, le=500),
+    action: str | None = Query(None),
+    search: str | None = Query(None),
     session: AsyncSession = Depends(get_db),
-) -> DataResponse[list[dict]]:
-    """Retrieve audit trail of recent platform actions."""
-    query = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)
+    current_user: CurrentUser = Depends(require_permission(Permission.VIEW_AUDIT_LOGS)),
+) -> DataResponse[dict]:
+    """Retrieve audit trail of recent platform actions with metrics and optional filtering."""
+    from sqlalchemy import or_, func
+
+    query = select(AuditLog)
+
+    if action and action != "ALL":
+        query = query.where(AuditLog.action == action)
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(
+            or_(
+                AuditLog.action.ilike(search_pattern),
+                AuditLog.user_name.ilike(search_pattern),
+                AuditLog.user_id.ilike(search_pattern),
+                AuditLog.resource_type.ilike(search_pattern),
+                AuditLog.details.ilike(search_pattern),
+            )
+        )
+
+    query = query.order_by(AuditLog.created_at.desc()).limit(limit)
     res = await session.execute(query)
     logs = res.scalars().all()
+
+    # Calculate summary metrics
+    tot_query = select(func.count(AuditLog.id))
+    tot_res = await session.execute(tot_query)
+    total_logs = tot_res.scalar() or 0
+
+    auth_query = select(func.count(AuditLog.id)).where(
+        AuditLog.action.in_(["USER_LOGIN", "USER_REGISTER", "PROFILE_UPDATED"])
+    )
+    auth_res = await session.execute(auth_query)
+    auth_count = auth_res.scalar() or 0
+
+    appt_query = select(func.count(AuditLog.id)).where(
+        AuditLog.action.in_(["APPOINTMENT_BOOKED", "APPOINTMENT_CANCELLED", "CONSULTATION_SAVED"])
+    )
+    appt_res = await session.execute(appt_query)
+    appt_count = appt_res.scalar() or 0
+
+    admin_query = select(func.count(AuditLog.id)).where(
+        AuditLog.action.in_(["DOCTOR_APPROVED", "DOCTOR_DELETED", "DOCTOR_REJECTED"])
+    )
+    admin_res = await session.execute(admin_query)
+    admin_count = admin_res.scalar() or 0
 
     items = [
         {
             "id": str(log.id),
             "user_id": str(log.user_id) if log.user_id else None,
+            "user_name": log.user_name or "System User",
+            "user_role": log.user_role or "system",
             "action": log.action,
-            "entity_type": log.entity_type,
-            "entity_id": str(log.entity_id) if log.entity_id else None,
-            "ip_address": log.ip_address,
+            "resource_type": log.resource_type,
+            "entity_type": log.resource_type,
+            "resource_id": str(log.resource_id) if log.resource_id else None,
+            "entity_id": str(log.resource_id) if log.resource_id else None,
+            "details": log.details,
+            "ip_address": log.ip_address or "127.0.0.1",
             "created_at": log.created_at.isoformat() if log.created_at else None,
         }
         for log in logs
     ]
-    return DataResponse(data=items, message="Audit logs retrieved")
+
+    return DataResponse(
+        data={
+            "logs": items,
+            "metrics": {
+                "total": total_logs,
+                "auth": auth_count,
+                "appointments": appt_count,
+                "admin": admin_count,
+            },
+        },
+        message="Audit logs retrieved successfully",
+    )
