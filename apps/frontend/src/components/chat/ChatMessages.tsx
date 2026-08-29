@@ -102,13 +102,86 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
       }
       if (part.startsWith('`') && part.endsWith('`')) {
         return (
-          <code key={i} className="px-1 py-0.5 rounded bg-slate-950 text-teal-300 font-mono text-[11px] border border-slate-800">
+          <code key={i} className="px-1.5 py-0.5 rounded bg-slate-800 text-teal-300 font-mono text-xs">
             {part.slice(1, -1)}
           </code>
         )
       }
-      return part
+      return <span key={i}>{part}</span>
     })
+  }
+
+  // Robust JSON stripper and Action Card extractor
+  const parseContentAndAction = (content: string, isUser: boolean) => {
+    if (!content) return { text: '', actionData: null }
+
+    // 1. User messages: decode JSON action payloads into clean human-readable text
+    if (isUser) {
+      try {
+        const trimmed = content.trim()
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+          const payload = JSON.parse(trimmed)
+          if (payload.__action === 'select_slot') {
+            return {
+              text: `Selected ${payload.selected_slot} on ${payload.date}`,
+              actionData: null,
+            }
+          }
+          if (payload.__action === 'confirm_booking') {
+            return {
+              text: `Confirmed booking with ${payload.doctor || 'doctor'} on ${payload.date} at ${payload.time}.`,
+              actionData: null,
+            }
+          }
+          if (payload.__action === 'cancel_booking_flow') {
+            return {
+              text: `Cancelled booking.`,
+              actionData: null,
+            }
+          }
+        }
+      } catch {}
+      return { text: content, actionData: null }
+    }
+
+    // 2. Assistant messages: extract ANY json block (codefence ```json ... ```, ``` ... ```, or raw { "action": ... })
+    let actionData: any = null
+    let cleaned = content
+
+    // Match markdown codeblocks with ```json ... ``` or ``` ... ```
+    const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi
+    let match
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      const rawInner = match[1].trim()
+      if (rawInner.startsWith('{') && rawInner.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(rawInner)
+          if (parsed.action) {
+            actionData = parsed
+            cleaned = cleaned.replace(match[0], '').trim()
+          }
+        } catch {}
+      }
+    }
+
+    // If no codeblock matched, check for standalone JSON object
+    if (!actionData) {
+      const rawJsonMatch = cleaned.match(/(\{[\s\r\n]*"action"[\s\S]*?\})/i)
+      if (rawJsonMatch) {
+        try {
+          const parsed = JSON.parse(rawJsonMatch[1])
+          if (parsed.action) {
+            actionData = parsed
+            cleaned = cleaned.replace(rawJsonMatch[0], '').trim()
+          }
+        } catch {}
+      }
+    }
+
+    // Ensure any leftover backtick blocks like ```json or ``` are stripped
+    cleaned = cleaned.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim()
+
+    return { text: cleaned, actionData }
   }
 
   return (
@@ -176,22 +249,12 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
                     </div>
                   )}
 
-                  {/* Render Text Content & Action Cards */}
+                  {/* Render Text Content & Action Cards (No raw JSON shown) */}
                   {(() => {
-                    const jsonMatch = msg.content.match(/```json\n([\s\S]*?)\n```/);
-                    let actionData = null;
-                    let textContent = msg.content;
-                    if (jsonMatch) {
-                      try {
-                        actionData = JSON.parse(jsonMatch[1]);
-                        textContent = textContent.replace(jsonMatch[0], '');
-                      } catch (e) {
-                        // Ignore parse errors, treat as regular text
-                      }
-                    }
+                    const { text, actionData } = parseContentAndAction(msg.content, isUser);
                     return (
                       <>
-                        {renderMarkdown(textContent)}
+                        {text && renderMarkdown(text)}
                         {actionData && (
                           <ActionCards actionData={actionData} onAction={(m) => onActionSelected?.(m)} />
                         )}

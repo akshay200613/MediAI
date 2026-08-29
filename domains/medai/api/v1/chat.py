@@ -56,45 +56,65 @@ def has_patient_details(message: str) -> bool:
 async def extract_and_update_patient(user_message: str, user_id: str, email: str) -> None:
     """
     Background task: Extract patient details from user message and update patient record.
-    Uses its own isolated DB session to prevent conflicts and ensure the main request is not blocked.
+    Uses regex fast extraction first (0 LLM tokens). Only falls back to LLM if complex natural language is detected.
     """
     if not has_patient_details(user_message):
         return
 
-    prompt = f"""
-    You are a precise data extractor. Analyze the user's message and extract any patient personal details.
-    
-    User Message: "{user_message}"
-    
-    Extract the following fields if present:
-    - date_of_birth: Date in YYYY-MM-DD format (if they mention date of birth)
-    - gender: One of "male", "female", "other"
-    - blood_group: One of "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"
-    - address: Street address
-    - city: City
-    - state: State
-    - emergency_contact_name: Full name of emergency contact
-    - emergency_contact_phone: Phone number of emergency contact
+    import re
+    msg_lower = user_message.lower()
+    data: dict = {}
 
-    Return ONLY a valid JSON object. Do not include any markdown, block quotes, backticks, or explanation.
-    Example output format:
-    {{"date_of_birth": "1990-05-15", "gender": "male"}}
-    
-    If no fields are found, return an empty JSON object {{}}.
-    """
+    # Fast Regex Extraction (0 LLM tokens)
+    dob_match = re.search(r'\b(19\d\d|20\d\d)[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b', user_message)
+    if dob_match:
+        data["date_of_birth"] = dob_match.group(0).replace("/", "-")
 
-    async with AsyncSessionLocal() as session:
+    gender_match = re.search(r'\b(male|female|other)\b', msg_lower)
+    if gender_match:
+        data["gender"] = gender_match.group(1)
+
+    phone_match = re.search(r'(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', user_message)
+    if phone_match and "000-000-0000" not in phone_match.group(0):
+        data["phone"] = phone_match.group(0).strip()
+
+    blood_match = re.search(r'\b(A|B|AB|O)[+-]\b', user_message, re.IGNORECASE)
+    if blood_match:
+        data["blood_group"] = blood_match.group(0).upper()
+
+    # Fall back to LLM only if regex captured nothing and user provided complex descriptive text
+    if not data:
+        prompt = f"""
+        You are a precise data extractor. Analyze the user's message and extract any patient personal details.
+        
+        User Message: "{user_message}"
+        
+        Extract the following fields if present:
+        - date_of_birth: Date in YYYY-MM-DD format (if they mention date of birth)
+        - gender: One of "male", "female", "other"
+        - blood_group: One of "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"
+        - address: Street address
+        - city: City
+        - state: State
+        - emergency_contact_name: Full name of emergency contact
+        - emergency_contact_phone: Phone number of emergency contact
+
+        Return ONLY a valid JSON object. Do not include any markdown, block quotes, backticks, or explanation.
+        Example output format:
+        {{"date_of_birth": "1990-05-15", "gender": "male"}}
+        
+        If no fields are found, return an empty JSON object {{}}.
+        """
+
         try:
-            # 1. Get LLM extraction
             llm = get_llm_client()
             response = await llm.generate(
                 messages=[Message(role="user", content=prompt)],
                 temperature=1.0,
-                max_tokens=500,
+                max_tokens=300,
             )
             content = response.content.strip()
             
-            # Clean markdown codeblocks if LLM outputs them
             if content.startswith("```"):
                 lines = content.splitlines()
                 if lines and lines[0].startswith("```"):
@@ -103,16 +123,20 @@ async def extract_and_update_patient(user_message: str, user_id: str, email: str
                     lines = lines[:-1]
                 content = "\n".join(lines).strip()
                 
-            data = json.loads(content)
-            
-            updated_fields = {}
-            if not isinstance(data, dict) or not data:
-                return
+            parsed = json.loads(content)
+            if isinstance(parsed, dict):
+                data.update(parsed)
+        except Exception:
+            pass
 
-            # 2. Update patient record
+    if not data:
+        return
+
+    async with AsyncSessionLocal() as session:
+        try:
             pat_res = await session.execute(
                 select(Patient).where(
-                    (Patient.email == email) | (Patient.user_id == str(user_id)),
+                    (Patient.user_id == str(user_id)) | (Patient.email == email),
                     Patient.is_deleted == False
                 )
             )
@@ -133,6 +157,7 @@ async def extract_and_update_patient(user_message: str, user_id: str, email: str
                 session.add(pat)
                 await session.flush()
 
+            updated_fields = {}
             if "date_of_birth" in data and data["date_of_birth"]:
                 try:
                     pat.date_of_birth = date.fromisoformat(data["date_of_birth"].split("T")[0])
@@ -144,6 +169,9 @@ async def extract_and_update_patient(user_message: str, user_id: str, email: str
                 if normalized_gender in ("male", "female", "other"):
                     pat.gender = normalized_gender
                     updated_fields["gender"] = normalized_gender
+            if "phone" in data and data["phone"]:
+                pat.phone = data["phone"]
+                updated_fields["phone"] = data["phone"]
             if "blood_group" in data and data["blood_group"]:
                 pat.blood_group = data["blood_group"]
                 updated_fields["blood_group"] = data["blood_group"]
@@ -165,13 +193,11 @@ async def extract_and_update_patient(user_message: str, user_id: str, email: str
 
             if updated_fields:
                 await session.commit()
-                logger.info(f"Updated patient {pat.id} details via chatbot: {updated_fields}")
+                logger.info(f"Updated patient {pat.id} details: {updated_fields}")
                 
-        except AIServiceUnavailableError as exc:
-            logger.warning(f"AI service unavailable during patient extraction: {exc}")
         except Exception as exc:
             await session.rollback()
-            logger.error(f"Failed to extract patient info from message: {exc}")
+            logger.error(f"Failed to update patient info from message: {exc}")
 
 
 @router.post(
@@ -195,7 +221,7 @@ async def chat(
         stmt_chk = select(ChatSession).where(ChatSession.id == message.session_id)
         res_chk = await session.execute(stmt_chk)
         existing_session = res_chk.scalar_one_or_none()
-        if existing_session and existing_session.user_id != current_user.user_id:
+        if isinstance(existing_session, ChatSession) and existing_session.user_id != current_user.user_id:
             raise HTTPException(
                 status_code=403,
                 detail="Unauthorized access: Session belongs to another patient."
@@ -207,6 +233,160 @@ async def chat(
         user_first_name = current_user.full_name.strip().split()[0]
     elif current_user.email:
         user_first_name = current_user.email.split("@")[0].capitalize()
+
+    # ── 2. Deterministic Action Fast-Path Dispatcher (0 LLM Tokens) ───────────
+    raw_content = message.content.strip()
+    action_payload = None
+    if raw_content.startswith("{") and raw_content.endswith("}"):
+        try:
+            action_payload = json.loads(raw_content)
+        except Exception:
+            action_payload = None
+
+    if isinstance(action_payload, dict) and "__action" in action_payload:
+        act = action_payload.get("__action")
+
+        # ── Fast-Path: Confirm Booking ────────────────────────────────────────
+        if act == "confirm_booking":
+            from domains.medai.services.patient_service import PatientService
+            from domains.medai.services.appointment_service import AppointmentService
+            from domains.medai.schemas.appointment import AppointmentCreate
+            from domains.medai.models.doctor import Doctor
+            from datetime import datetime
+
+            pat_svc = PatientService(session)
+            patient = await pat_svc.get_patient_by_user_id(current_user.user_id, user_email=current_user.email)
+            if not patient:
+                names = (current_user.full_name or "Patient User").split(" ", 1)
+                patient = await pat_svc.create_patient(PatientCreate(
+                    first_name=names[0] if names[0] else "Patient",
+                    last_name=names[1] if len(names) > 1 and names[1].strip() else "User",
+                    email=current_user.email,
+                    phone="000-000-0000",
+                    user_id=current_user.user_id,
+                ))
+
+            # Resolve Doctor ID
+            from sqlalchemy import or_
+            doc_id = action_payload.get("doctor_id")
+            doc_name = action_payload.get("doctor", "Doctor")
+            if not doc_id and action_payload.get("doctor"):
+                clean_name = action_payload["doctor"].replace("Dr.", "").replace("Dr", "").strip()
+                doc_res = await session.execute(
+                    select(Doctor).where(
+                        or_(
+                            Doctor.first_name.ilike(f"%{clean_name}%"),
+                            Doctor.last_name.ilike(f"%{clean_name}%"),
+                        ),
+                        Doctor.is_deleted == False
+                    )
+                )
+                doc_obj = doc_res.scalars().first()
+                if doc_obj:
+                    doc_id = str(doc_obj.id)
+                    doc_name = doc_obj.full_name
+            elif doc_id:
+                doc_res = await session.execute(
+                    select(Doctor).where(Doctor.id == uuid.UUID(str(doc_id)), Doctor.is_deleted == False)
+                )
+                doc_obj = doc_res.scalar_one_or_none()
+                if doc_obj:
+                    doc_name = doc_obj.full_name
+
+            appt_date = action_payload.get("date")
+            appt_time = action_payload.get("time")
+            try:
+                scheduled_at = datetime.fromisoformat(f"{appt_date}T{appt_time}:00")
+                appt_svc = AppointmentService(session)
+                appt = await appt_svc.create_appointment(AppointmentCreate(
+                    patient_id=patient.id,
+                    doctor_id=uuid.UUID(str(doc_id)),
+                    appointment_type=action_payload.get("type", "consultation").lower(),
+                    scheduled_at=scheduled_at,
+                    duration_minutes=30,
+                    reason=action_payload.get("reason", "General Consultation"),
+                ))
+
+                success_card = {
+                    "action": "booking_success",
+                    "appointment_id": str(appt.id),
+                    "doctor": doc_name,
+                    "date": appt_date,
+                    "time": appt_time,
+                }
+                reply = (
+                    f"Your appointment with {doc_name} is confirmed for {appt_date} at {appt_time}.\n\n"
+                    f"```json\n{json.dumps(success_card, indent=2)}\n```"
+                )
+                user_msg = f"Confirmed appointment with {doc_name} on {appt_date} at {appt_time}."
+                await session_mgr.add_exchange(current_user.user_id, session_id, user_msg, reply)
+                return DataResponse(
+                    data=ChatResponse(
+                        content=reply,
+                        session_id=session_id,
+                        sources=[],
+                        agent_name="scheduling",
+                        tool_calls=[],
+                    ),
+                    message="Appointment booked successfully",
+                )
+            except Exception as e:
+                err_reply = f"Could not complete booking: {str(e)}"
+                await session_mgr.add_exchange(current_user.user_id, session_id, "Confirm booking", err_reply)
+                return DataResponse(
+                    data=ChatResponse(
+                        content=err_reply,
+                        session_id=session_id,
+                        sources=[],
+                        agent_name="scheduling",
+                        tool_calls=[],
+                    ),
+                    message="Booking failed",
+                )
+
+        # ── Fast-Path: Select Slot ────────────────────────────────────────────
+        elif act == "select_slot":
+            confirm_card = {
+                "action": "booking_confirmation",
+                "doctor": action_payload.get("doctor"),
+                "doctor_id": action_payload.get("doctor_id"),
+                "specialty": action_payload.get("specialty", "General Practice"),
+                "date": action_payload.get("date"),
+                "time": action_payload.get("selected_slot"),
+                "type": action_payload.get("type", "Consultation"),
+                "reason": action_payload.get("reason", "General Consultation"),
+            }
+            reply = (
+                f"You selected {action_payload.get('selected_slot')} on {action_payload.get('date')} with {action_payload.get('doctor')}. Please confirm your booking:\n\n"
+                f"```json\n{json.dumps(confirm_card, indent=2)}\n```"
+            )
+            user_msg = f"Selected {action_payload.get('selected_slot')} on {action_payload.get('date')}"
+            await session_mgr.add_exchange(current_user.user_id, session_id, user_msg, reply)
+            return DataResponse(
+                data=ChatResponse(
+                    content=reply,
+                    session_id=session_id,
+                    sources=[],
+                    agent_name="scheduling",
+                    tool_calls=[],
+                ),
+                message="Slot selection processed",
+            )
+
+        # ── Fast-Path: Cancel Booking Flow ───────────────────────────────────
+        elif act == "cancel_booking_flow":
+            reply = "I've cancelled this booking request. Let me know whenever you'd like to search for available doctors or schedule a new visit!"
+            await session_mgr.add_exchange(current_user.user_id, session_id, "Cancelled booking", reply)
+            return DataResponse(
+                data=ChatResponse(
+                    content=reply,
+                    session_id=session_id,
+                    sources=[],
+                    agent_name="scheduling",
+                    tool_calls=[],
+                ),
+                message="Booking cancelled",
+            )
 
     # Fast-path for simple small talk (personalized with user's actual account name)
     import re
@@ -264,14 +444,20 @@ async def chat(
         )
 
         # Check DB single source of truth for patient record
+        from sqlalchemy import func
         pat_res = await session.execute(
             select(Patient).where(
-                (Patient.email == current_user.email) | (Patient.user_id == str(current_user.user_id)),
+                (Patient.user_id == str(current_user.user_id)) | (func.lower(Patient.email) == func.lower(current_user.email)),
                 Patient.is_deleted == False
             )
         )
         pat = pat_res.scalar_one_or_none()
         if pat:
+            # Auto-link user_id if it was not populated
+            if not pat.user_id:
+                pat.user_id = str(current_user.user_id)
+                await session.commit()
+
             patient_name = pat.full_name
             if pat.first_name and "@" not in pat.first_name:
                 user_first_name = pat.first_name
@@ -279,9 +465,9 @@ async def chat(
             # Check mandatory booking fields on DB model
             if not pat.date_of_birth:
                 missing_fields.append("Date of Birth")
-            if not pat.gender:
+            if not pat.gender or str(pat.gender).strip().lower() not in ("male", "female", "other"):
                 missing_fields.append("Gender")
-            if not pat.phone or pat.phone == "000-000-0000":
+            if not pat.phone or str(pat.phone).strip() in ("000-000-0000", "0000000000", ""):
                 missing_fields.append("Phone Number")
 
     from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -482,9 +668,9 @@ async def get_session_messages(
     chat_session = result_sess.scalar_one_or_none()
 
     if not chat_session:
-        raise HTTPException(
-            status_code=403,
-            detail="Session not found or unauthorized access"
+        return DataResponse(
+            data=[],
+            message="No messages found",
         )
 
     stmt_msg = (

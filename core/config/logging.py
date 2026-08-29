@@ -1,11 +1,8 @@
-"""
-Structured Logging Configuration using structlog.
-Outputs JSON in production, colorful console in development.
-"""
-
 import logging
 import sys
+import warnings
 
+import litellm
 import structlog
 
 from core.config.settings import settings
@@ -13,6 +10,26 @@ from core.config.settings import settings
 
 def configure_logging() -> None:
     """Configure structlog for the application."""
+    # Suppress verbose third-party loggers and warnings
+    litellm.suppress_debug_info = True
+    litellm.set_verbose = False
+    warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+    noisy_loggers = (
+        "litellm",
+        "LiteLLM",
+        "LiteLLM Router",
+        "LiteLLM Proxy",
+        "httpx",
+        "httpcore",
+        "openai",
+        "langsmith",
+    )
+
+    for noisy_logger in noisy_loggers:
+        logging.getLogger(noisy_logger).setLevel(logging.ERROR)
+
     shared_processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
@@ -49,7 +66,12 @@ def configure_logging() -> None:
         level=logging.DEBUG if settings.debug else logging.INFO,
     )
 
+    # Re-apply noisy logger silence after basicConfig
+    for noisy_logger in noisy_loggers:
+        logging.getLogger(noisy_logger).setLevel(logging.ERROR)
+
 
 def get_logger(name: str) -> structlog.BoundLogger:
     """Get a named structlog logger."""
     return structlog.get_logger(name)
+

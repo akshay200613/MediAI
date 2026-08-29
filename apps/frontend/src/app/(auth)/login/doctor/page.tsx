@@ -508,7 +508,9 @@ function PendingScreen({ onLoginClick }: { onLoginClick: () => void }) {
   )
 }
 
-export default function DoctorLoginPage() {
+import { Suspense } from 'react'
+
+function DoctorLoginContent() {
   const searchParams = useSearchParams()
   const initialMode = searchParams?.get('mode') === 'register' ? 'register' : 'login'
   const [view, setView] = useState<'login' | 'register' | 'pending' | 'forgot'>(initialMode)
@@ -605,5 +607,13 @@ export default function DoctorLoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function DoctorLoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500 text-xs">Loading...</div>}>
+      <DoctorLoginContent />
+    </Suspense>
   )
 }

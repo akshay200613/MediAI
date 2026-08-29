@@ -103,18 +103,18 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
 
     # ── LiteLLM Model Routing (Primary) ───────────────────────────────────────
-    model_reception: str = "gemini/gemini-1.5-flash"
-    model_medical: str = "gemini/gemini-1.5-pro"
-    model_scheduling: str = "gemini/gemini-1.5-flash"
-    model_knowledge: str = "gemini/gemini-1.5-flash"
-    model_supervisor: str = "gemini/gemini-1.5-pro"
+    model_reception: str = "gemini/gemini-3.6-flash"
+    model_medical: str = "gemini/gemini-3.6-flash"
+    model_scheduling: str = "gemini/gemini-3.6-flash"
+    model_knowledge: str = "gemini/gemini-3.6-flash"
+    model_supervisor: str = "gemini/gemini-3.6-flash"
 
     # ── LiteLLM Model Routing (Fallback → Groq) ──────────────────────────────
-    model_fallback_reception: str = "groq/llama-3.3-70b-versatile"
-    model_fallback_medical: str = "groq/llama-3.3-70b-versatile"
-    model_fallback_scheduling: str = "groq/llama-3.3-70b-versatile"
-    model_fallback_knowledge: str = "groq/llama-3.3-70b-versatile"
-    model_fallback_supervisor: str = "groq/llama-3.3-70b-versatile"
+    model_fallback_reception: str = "groq/openai/gpt-oss-20b"
+    model_fallback_medical: str = "groq/openai/gpt-oss-120b"
+    model_fallback_scheduling: str = "groq/openai/gpt-oss-20b"
+    model_fallback_knowledge: str = "groq/openai/gpt-oss-120b"
+    model_fallback_supervisor: str = "groq/openai/gpt-oss-120b"
 
     # ── LiteLLM Router ────────────────────────────────────────────────────────
     litellm_num_retries: int = 2

@@ -88,7 +88,6 @@ def create_app() -> FastAPI:
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
         lifespan=lifespan,
-        default_response_class=ORJSONResponse,
     )
 
     # ── Security & CORS Middleware ────────────────────────────────────────────

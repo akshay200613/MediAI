@@ -26,7 +26,14 @@ export const ActionCards: React.FC<ActionCardsProps> = ({ actionData, onAction }
             {actionData.slots?.map((slot: string) => (
               <button
                 key={slot}
-                onClick={() => onAction(`I'd like to book ${slot} on ${actionData.date}`)}
+                onClick={() => onAction(JSON.stringify({
+                  __action: 'select_slot',
+                  doctor: actionData.doctor,
+                  doctor_id: actionData.doctor_id,
+                  specialty: actionData.specialty || 'General Practice',
+                  date: actionData.date,
+                  selected_slot: slot,
+                }))}
                 className="px-3 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 text-xs border border-teal-500/30 transition-colors"
               >
                 {slot}
@@ -66,19 +73,30 @@ export const ActionCards: React.FC<ActionCardsProps> = ({ actionData, onAction }
           </div>
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => onAction("Yes, confirm booking.")}
+              onClick={() => onAction(JSON.stringify({
+                __action: 'confirm_booking',
+                doctor: actionData.doctor,
+                doctor_id: actionData.doctor_id,
+                specialty: actionData.specialty,
+                date: actionData.date,
+                time: actionData.time,
+                type: actionData.type,
+                reason: actionData.reason,
+              }))}
               className="px-3 py-2 rounded-lg bg-teal-500 hover:bg-teal-600 text-white font-medium text-xs transition-colors flex justify-center items-center gap-1"
             >
               <CheckCircle className="w-3.5 h-3.5" /> Confirm
             </button>
             <button
-              onClick={() => onAction("No, cancel this.")}
+              onClick={() => onAction(JSON.stringify({
+                __action: 'cancel_booking_flow'
+              }))}
               className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-xs transition-colors"
             >
               Cancel
             </button>
             <button
-              onClick={() => onAction("Can we change the time?")}
+              onClick={() => onAction("Can we check another available date or time?")}
               className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-xs transition-colors col-span-2"
             >
               Change Time

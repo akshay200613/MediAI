@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "MedAI – Intelligent Clinic Management System"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "Proprietary - Source Available (View & Contribute Only)" }
 authors = [{ name = "MedAI Team" }]
 
 dependencies = [

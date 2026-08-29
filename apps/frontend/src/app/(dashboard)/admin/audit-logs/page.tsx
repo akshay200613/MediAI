@@ -357,7 +357,7 @@ export default function AdminAuditLogsPage() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ ease: easeOutExpo, duration: 0.2 }}
+              transition={{ ...easeOutExpo, duration: 0.2 }}
               className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 font-sans"
             >
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">

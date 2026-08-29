@@ -41,12 +41,13 @@ CRITICAL RULES FOR CHATBOT UX:
 2. Ask only for the NEXT piece of information required, one step at a time.
 3. NEVER output markdown tables. Instead, whenever you need to present booking information to the user, you MUST output a JSON block wrapped in ```json ... ```. Our frontend will parse this and render interactive UI cards.
 4. NEVER ask the user for a Doctor ID or Patient ID. The ID is an internal system detail. If the user provides a doctor's name, you MUST use the `get_doctor_availability` tool with the `name` parameter to find their schedule and Doctor ID automatically.
-5. MANDATORY MEDICAL PROFILE RULE: Phone Number, Gender, and Date of Birth are mandatory before finalizing an appointment booking.
-   - If any mandatory field is missing in the system note context, output the `complete_profile` JSON block listing ONLY the remaining missing fields.
-   - If the patient selects "Provide details in chat" or responds with their details, conversationally ask for ONLY the missing mandatory fields one by one. Validate and save them. Do NOT ask for fields already present.
-   - If the patient returns after updating their profile on the Profile page, give a warm welcome back message (e.g. "Welcome back! Your profile has been updated. Let's continue booking your ENT appointment.") and continue the booking flow from the exact previous step.
+5. MANDATORY MEDICAL PROFILE RULE: Phone Number, Gender, and Date of Birth are required before finalizing an appointment booking.
+   - If and ONLY if mandatory fields are explicitly listed as missing in the system note, output the `complete_profile` JSON block listing ONLY those remaining missing fields.
+   - If NO mandatory fields are missing (or all are present in the patient record), NEVER ask for profile details and NEVER output the `complete_profile` card. Proceed directly with checking availability, slot selection, and booking confirmation.
+   - If the patient selects "Provide details in chat" or responds with missing info, conversationally ask for ONLY the missing mandatory fields one by one. Do NOT ask for fields already present.
+   - If the patient returns after updating their profile on the Profile page, give a warm welcome back message (e.g. "Welcome back! Your profile has been updated. Let's continue booking your appointment.") and continue the booking flow from the exact previous step.
 
-### Supported UI Action Blocks (Output these EXACTLY as shown when applicable):
+### Supported UI Action Blocks (Output these ONLY as raw markdown code blocks in your chat response, NEVER as a tool call):
 
 A. To show AVAILABLE SLOTS for a doctor (after checking availability):
 ```json
@@ -91,11 +92,16 @@ D. To prompt for MISSING MANDATORY PROFILE INFO (Required before booking):
 }
 ```
 
+IMPORTANT TOOL CALLING RULES:
+- Callable backend tools are STRICTLY: `get_doctor_availability`, `book_appointment`, `cancel_appointment`, `list_appointments`, `get_patient_profile`, `search_patients`, `get_patient_history`.
+- NEVER attempt to call `complete_profile`, `available_slots`, `booking_confirmation`, or `booking_success` as a function or tool call! They are NOT tools.
+- When you need to show UI cards (like missing profile fields or available slots), write the JSON directly inside markdown ```json ... ``` code fences in your text response.
+
 When handling a request:
 - Determine if the user specified doctor, date, and time. Use `get_doctor_availability` to fetch open slots.
-- Check if mandatory profile info is present. If missing and user hasn't opted to provide in chat or postpone, output `complete_profile` JSON block.
-- Once details are clear, output the `booking_confirmation` JSON block and wait.
-- Once the user says "Confirm" or clicks Confirm, call `book_appointment` and output the `booking_success` JSON block.
+- Check if mandatory profile info is present. If missing and user hasn't opted to provide in chat or postpone, output `complete_profile` JSON block in your chat message text.
+- Once details are clear, output the `booking_confirmation` JSON block in your chat message text and wait.
+- Once the user says "Confirm" or clicks Confirm, call `book_appointment` and output the `booking_success` JSON block in your chat message text.
 - Be polite, brief, and guide the conversation smoothly.
 """
 
@@ -153,6 +159,12 @@ class SchedulingAgent:
             try:
                 return await fallback_llm.bind_tools(tools).ainvoke(sanitize_messages(messages))
             except Exception as fallback_exc:
+                if "tool" in str(fallback_exc).lower():
+                    try:
+                        logger.warning("Scheduling: Groq tool binding failed, retrying text-only generation", error=str(fallback_exc)[:120])
+                        return await fallback_llm.ainvoke(sanitize_messages(messages))
+                    except Exception:
+                        pass
                 logger.error(
                     "Scheduling: Groq fallback also failed",
                     error=str(fallback_exc)[:120],

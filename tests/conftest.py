@@ -92,7 +92,12 @@ def mock_session() -> AsyncMock:
     session.add = MagicMock()
     session.commit = AsyncMock()
     session.refresh = AsyncMock()
-    session.execute = AsyncMock()
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_result.scalars.return_value.first.return_value = None
+    mock_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=mock_result)
     session.close = AsyncMock()
     return session
 
