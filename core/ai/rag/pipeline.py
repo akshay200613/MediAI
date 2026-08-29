@@ -506,6 +506,21 @@ class RAGPipeline:
             score_threshold=settings.rag_score_threshold,
         )
 
+        # Security: RAG Privacy & Multi-Tenant Access Control Guard
+        # Filter out private patient consultation notes unless query is explicitly scoped to that patient_id
+        scoped_patient_id = (filters or {}).get("patient_id")
+        if not scoped_patient_id:
+            retrieved = [
+                r for r in retrieved
+                if r.metadata.get("category") != "consultation_notes"
+                and not r.metadata.get("patient_id")
+            ]
+        else:
+            retrieved = [
+                r for r in retrieved
+                if not r.metadata.get("patient_id") or str(r.metadata.get("patient_id")) == str(scoped_patient_id)
+            ]
+
         # Limit final results.
         retrieved = retrieved[:k]
 

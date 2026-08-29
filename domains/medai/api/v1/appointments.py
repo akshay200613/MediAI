@@ -59,7 +59,16 @@ async def book_appointment(
         appt = await svc.create_appointment(data)
     except ValueError as val_err:
         err_msg = str(val_err)
-        status_code = status.HTTP_409_CONFLICT if "Double booking" in err_msg else status.HTTP_400_BAD_REQUEST
+        is_conflict = any(
+            k in err_msg
+            for k in [
+                "Double booking",
+                "Slot booking limit",
+                "Booking limit",
+                "already have an active appointment",
+            ]
+        )
+        status_code = status.HTTP_409_CONFLICT if is_conflict else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=err_msg)
 
     # Log appointment booking to Audit Trail
@@ -163,10 +172,13 @@ async def get_booked_slots(
     session: AsyncSession = Depends(get_db),
     _: CurrentUser = Depends(require_permission(Permission.VIEW_APPOINTMENT)),
 ) -> DataResponse[list[str]]:
-    """Returns a list of scheduled_at datetimes (ISO format) that are already booked for the given doctor and date range."""
-    from sqlalchemy import select
-    from domains.medai.models.appointment import Appointment, AppointmentStatus
+    """Returns a list of scheduled_at datetimes (ISO format) that have reached maximum capacity (2 bookings) for the given doctor and date range."""
+    from collections import Counter
     from datetime import datetime, timedelta
+    from sqlalchemy import select
+    from core.config.constants import MAX_BOOKINGS_PER_SLOT
+    from core.config.settings import settings
+    from domains.medai.models.appointment import Appointment, AppointmentStatus
 
     try:
         start_dt = datetime.strptime(date, "%Y-%m-%d")
@@ -177,16 +189,43 @@ async def get_booked_slots(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
+    active_statuses = [
+        AppointmentStatus.SCHEDULED,
+        AppointmentStatus.CONFIRMED,
+        AppointmentStatus.IN_PROGRESS,
+    ]
+
     query = select(Appointment.scheduled_at).where(
         Appointment.doctor_id == str(doctor_id),
         Appointment.scheduled_at >= start_dt,
         Appointment.scheduled_at < end_dt,
-        Appointment.status != AppointmentStatus.CANCELLED,
+        Appointment.status.in_(active_statuses),
         Appointment.is_deleted == False,
     )
     res = await session.execute(query)
-    slots = [dt.isoformat() if hasattr(dt, 'isoformat') else str(dt) for dt in res.scalars()]
-    return DataResponse(data=slots)
+
+    raw_slots = []
+    if hasattr(res, "scalars"):
+        try:
+            sc = res.scalars()
+            raw_slots = list(sc.all()) if hasattr(sc, "all") else list(sc)
+        except Exception:
+            raw_slots = []
+    elif isinstance(res, (list, tuple)):
+        raw_slots = list(res)
+
+    max_slot_limit = getattr(settings, "max_bookings_per_slot", MAX_BOOKINGS_PER_SLOT)
+
+    # Count bookings per slot
+    slot_counts = Counter(raw_slots)
+    # A slot is fully booked if count >= max_slot_limit
+    fully_booked_slots = [
+        dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
+        for dt, count in slot_counts.items()
+        if count >= max_slot_limit
+    ]
+    return DataResponse(data=fully_booked_slots)
+
 
 
 
@@ -194,12 +233,38 @@ async def get_booked_slots(
 async def get_appointment(
     appt_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_permission(Permission.VIEW_APPOINTMENT)),
+    current_user: CurrentUser = Depends(require_permission(Permission.VIEW_APPOINTMENT)),
 ) -> DataResponse[AppointmentOut]:
     svc = AppointmentService(session)
     appt = await svc.get_appointment(appt_id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
+
+    user_role = getattr(current_user, "role", "user")
+    if user_role in ("patient", "user"):
+        from domains.medai.services.patient_service import PatientService
+        patient_svc = PatientService(session)
+        patient_record = await patient_svc.get_patient_by_user_id(
+            current_user.user_id, user_email=current_user.email
+        )
+        valid_patient_ids = {current_user.user_id}
+        if patient_record:
+            valid_patient_ids.add(str(patient_record.id))
+        if str(appt.patient_id) not in valid_patient_ids:
+            raise HTTPException(status_code=403, detail="Access denied: You can only view your own appointments")
+
+    elif user_role == "doctor":
+        from domains.medai.services.doctor_service import DoctorService
+        doc_svc = DoctorService(session)
+        doc_record = await doc_svc.repo.get_by_field("user_id", current_user.user_id)
+        if not doc_record and current_user.email:
+            doc_record = await doc_svc.repo.get_by_field("email", current_user.email)
+        valid_doc_ids = {str(current_user.user_id)}
+        if doc_record:
+            valid_doc_ids.add(str(doc_record.id))
+        if str(appt.doctor_id) not in valid_doc_ids:
+            raise HTTPException(status_code=403, detail="Access denied: Doctors can only view their own assigned appointments")
+
     return DataResponse(data=appt)
 
 
@@ -208,9 +273,38 @@ async def update_appointment(
     appt_id: uuid.UUID,
     data: AppointmentUpdate,
     session: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_permission(Permission.UPDATE_APPOINTMENT)),
+    current_user: CurrentUser = Depends(require_permission(Permission.UPDATE_APPOINTMENT)),
 ) -> DataResponse[AppointmentOut]:
     svc = AppointmentService(session)
+    existing_appt = await svc.get_appointment(appt_id)
+    if not existing_appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    user_role = getattr(current_user, "role", "user")
+    if user_role in ("patient", "user"):
+        from domains.medai.services.patient_service import PatientService
+        patient_svc = PatientService(session)
+        patient_record = await patient_svc.get_patient_by_user_id(
+            current_user.user_id, user_email=current_user.email
+        )
+        valid_patient_ids = {current_user.user_id}
+        if patient_record:
+            valid_patient_ids.add(str(patient_record.id))
+        if str(existing_appt.patient_id) not in valid_patient_ids:
+            raise HTTPException(status_code=403, detail="Access denied: You can only update your own appointments")
+
+    elif user_role == "doctor":
+        from domains.medai.services.doctor_service import DoctorService
+        doc_svc = DoctorService(session)
+        doc_record = await doc_svc.repo.get_by_field("user_id", current_user.user_id)
+        if not doc_record and current_user.email:
+            doc_record = await doc_svc.repo.get_by_field("email", current_user.email)
+        valid_doc_ids = {str(current_user.user_id)}
+        if doc_record:
+            valid_doc_ids.add(str(doc_record.id))
+        if str(existing_appt.doctor_id) not in valid_doc_ids:
+            raise HTTPException(status_code=403, detail="Access denied: Doctors can only update their own assigned appointments")
+
     appt = await svc.update_appointment(appt_id, data)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -340,6 +434,10 @@ async def record_consultation_notes(
     from core.ai.llm.litellm_client import get_llm_client
     from domains.medai.models.appointment import Appointment, AppointmentStatus
 
+    user_role = getattr(current_user, "role", "user")
+    if user_role not in ("doctor", "admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="Access denied: Only doctors and administrators can record consultation notes")
+
     notes_text = body.get("notes", "").strip()
     prescription = body.get("prescription", "").strip()
     if not notes_text:
@@ -349,6 +447,18 @@ async def record_consultation_notes(
     appt = await svc.get_appointment(appt_id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
+
+    if user_role == "doctor":
+        from domains.medai.services.doctor_service import DoctorService
+        doc_svc = DoctorService(session)
+        doc_record = await doc_svc.repo.get_by_field("user_id", current_user.user_id)
+        if not doc_record and current_user.email:
+            doc_record = await doc_svc.repo.get_by_field("email", current_user.email)
+        valid_doc_ids = {str(current_user.user_id)}
+        if doc_record:
+            valid_doc_ids.add(str(doc_record.id))
+        if str(appt.doctor_id) not in valid_doc_ids:
+            raise HTTPException(status_code=403, detail="Access denied: You can only record notes for your own assigned appointments")
 
     full_note = f"Consultation Notes: {notes_text}"
     if prescription:

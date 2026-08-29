@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core.auth.jwt_handler import decode_token
+from core.auth.token_blacklist import is_token_blacklisted
 from core.config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,15 +32,23 @@ async def get_current_user(
 ) -> CurrentUser:
     """
     FastAPI dependency: extracts and validates the JWT bearer token.
-    Raises 401 if invalid.
+    Raises 401 if invalid or revoked.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    raw_token = credentials.credentials
+    if await is_token_blacklisted(raw_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
-        payload = decode_token(credentials.credentials)
+        payload = decode_token(raw_token)
         
         # Security: Enforce access token type to prevent refresh token reuse
         if payload.get("type") != "access":

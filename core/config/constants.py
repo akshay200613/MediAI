@@ -53,3 +53,8 @@ ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".txt", ".png", ".jpg", ".jpeg"}
 # API versioning
 API_V1_PREFIX = "/api/v1"
 API_V2_PREFIX = "/api/v2"
+
+# Appointment Booking Limits
+MAX_BOOKINGS_PER_SLOT = 2
+MAX_ACTIVE_APPOINTMENTS_PER_PATIENT = 2
+

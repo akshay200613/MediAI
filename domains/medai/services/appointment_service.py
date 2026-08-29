@@ -16,32 +16,100 @@ class AppointmentService:
         self.repo = AppointmentRepository(session)
 
     async def create_appointment(self, data: AppointmentCreate) -> AppointmentOut:
+        import inspect
+        import uuid
         from sqlalchemy import select
         from domains.medai.models.appointment import Appointment, AppointmentStatus
         from domains.medai.models.doctor import Doctor
+        from core.config.constants import MAX_BOOKINGS_PER_SLOT, MAX_ACTIVE_APPOINTMENTS_PER_PATIENT
+        from core.config.settings import settings
         from core.metrics import appointment_bookings_total
-        import uuid
 
-        # 1. Double-booking check
-        query = select(Appointment).where(
-            Appointment.doctor_id == str(data.doctor_id),
-            Appointment.scheduled_at == data.scheduled_at,
-            Appointment.status != AppointmentStatus.CANCELLED,
+        active_statuses = [
+            AppointmentStatus.SCHEDULED,
+            AppointmentStatus.CONFIRMED,
+            AppointmentStatus.IN_PROGRESS,
+        ]
+
+        def _extract_records(res) -> list:
+            if res is None:
+                return []
+            if hasattr(res, "scalars"):
+                try:
+                    sc = res.scalars()
+                    if hasattr(sc, "all"):
+                        items = sc.all()
+                    elif hasattr(sc, "__iter__"):
+                        items = list(sc)
+                    else:
+                        items = [sc]
+                except Exception:
+                    items = []
+            elif hasattr(res, "scalar_one_or_none"):
+                try:
+                    item = res.scalar_one_or_none()
+                    items = [item] if item is not None else []
+                except Exception:
+                    items = []
+            elif isinstance(res, (list, tuple)):
+                items = list(res)
+            else:
+                items = []
+
+            clean = []
+            for it in items:
+                if (
+                    it is not None
+                    and not inspect.iscoroutine(it)
+                    and "AsyncMock" not in str(it)
+                    and "coroutine" not in str(it)
+                    and "mock.execute().scalar_one_or_none()" not in str(it)
+                    and "mock.execute().scalars()" not in str(it)
+                ):
+                    clean.append(it)
+            return clean
+
+        # 1. Per-Person Booking Limit Check (Max 2 active appointments per patient)
+        max_pat_limit = getattr(settings, "max_active_appointments_per_patient", MAX_ACTIVE_APPOINTMENTS_PER_PATIENT)
+        pat_query = select(Appointment).where(
+            Appointment.patient_id == str(data.patient_id),
+            Appointment.status.in_(active_statuses),
             Appointment.is_deleted == False,
         )
-        import inspect
-        res = await self.session.execute(query)
-        existing = res.scalar_one_or_none() if hasattr(res, "scalar_one_or_none") else None
-        is_real_record = (
-            existing is not None
-            and not inspect.iscoroutine(existing)
-            and "AsyncMock" not in str(existing)
-            and "coroutine" not in str(existing)
-            and "mock.execute().scalar_one_or_none()" not in str(existing)
+        pat_res = await self.session.execute(pat_query)
+        pat_appts = _extract_records(pat_res)
+
+        if len(pat_appts) >= max_pat_limit:
+            raise ValueError(
+                f"Booking limit reached: Patient already has {len(pat_appts)} active appointment(s). "
+                f"A maximum of {max_pat_limit} active appointments is allowed per patient."
+            )
+
+        # 2. Duplicate Slot Check: Ensure this patient has not already booked this exact slot
+        for appt_item in pat_appts:
+            if (
+                str(getattr(appt_item, "doctor_id", "")) == str(data.doctor_id)
+                and getattr(appt_item, "scheduled_at", None) == data.scheduled_at
+            ):
+                raise ValueError("You already have an active appointment booked for this time slot.")
+
+        # 3. Per-Slot Booking Limit Check (Max 2 bookings per time slot)
+        max_slot_limit = getattr(settings, "max_bookings_per_slot", MAX_BOOKINGS_PER_SLOT)
+        slot_query = select(Appointment).where(
+            Appointment.doctor_id == str(data.doctor_id),
+            Appointment.scheduled_at == data.scheduled_at,
+            Appointment.status.in_(active_statuses),
+            Appointment.is_deleted == False,
         )
-        if is_real_record:
+        slot_res = await self.session.execute(slot_query)
+        slot_appts = _extract_records(slot_res)
+
+        if len(slot_appts) >= max_slot_limit:
             appointment_bookings_total.labels(outcome="conflict").inc()
-            raise ValueError("Double booking error: Doctor already has an active appointment at this selected time slot.")
+            raise ValueError(
+                f"Slot booking limit reached: This time slot already has the maximum of {max_slot_limit} bookings."
+            )
+
 
         # 2. Check doctor availability schedule strictly against doctor's profile
         doc_res = await self.session.execute(

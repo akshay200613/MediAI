@@ -19,6 +19,7 @@ from typing import Any
 from core.ai.graph.tools.server import mcp_server
 from core.config.logging import get_logger
 from core.database.base import AsyncSessionLocal
+from core.ai.graph.tools.context import get_tool_security_context
 
 
 logger = get_logger(__name__)
@@ -39,12 +40,34 @@ async def get_patient_profile(patient_id: str) -> dict[str, Any]:
     """
 
     from domains.medai.services.patient_service import PatientService
+    import uuid
+
+    ctx = get_tool_security_context()
 
     try:
         async with AsyncSessionLocal() as session:
             service = PatientService(session)
 
-            import uuid
+            # Authorization Check
+            if ctx and ctx.role in ("patient", "user"):
+                pat_record = await service.get_patient_by_user_id(ctx.user_id, user_email=ctx.email)
+                valid_ids = {ctx.user_id}
+                if pat_record:
+                    valid_ids.add(str(pat_record.id))
+                if ctx.patient_id:
+                    valid_ids.add(str(ctx.patient_id))
+
+                if str(patient_id) not in valid_ids:
+                    logger.warning(
+                        "Tool IDOR attempt blocked in get_patient_profile",
+                        caller_user_id=ctx.user_id,
+                        attempted_patient_id=patient_id,
+                    )
+                    return {
+                        "found": False,
+                        "error": "Unauthorized: You can only view your own patient profile.",
+                    }
+
             patient = await service.get_patient(
                 uuid.UUID(patient_id)
             )
@@ -85,6 +108,21 @@ async def search_patients(query: str) -> dict[str, Any]:
     """
 
     from domains.medai.services.patient_service import PatientService
+
+    ctx = get_tool_security_context()
+
+    # Authorization Check: Patients/users cannot search all patients
+    if ctx and ctx.role in ("patient", "user"):
+        logger.warning(
+            "Tool search_patients blocked for non-staff caller",
+            caller_user_id=ctx.user_id,
+            role=ctx.role,
+        )
+        return {
+            "count": 0,
+            "patients": [],
+            "error": "Unauthorized: Patients are not permitted to search the patient directory.",
+        }
 
     try:
         async with AsyncSessionLocal() as session:
@@ -129,13 +167,35 @@ async def get_patient_history(patient_id: str) -> dict[str, Any]:
     from domains.medai.services.appointment_service import (
         AppointmentService,
     )
+    import uuid
+
+    ctx = get_tool_security_context()
 
     try:
         async with AsyncSessionLocal() as session:
             patient_service = PatientService(session)
             appointment_service = AppointmentService(session)
 
-            import uuid
+            # Authorization Check
+            if ctx and ctx.role in ("patient", "user"):
+                pat_record = await patient_service.get_patient_by_user_id(ctx.user_id, user_email=ctx.email)
+                valid_ids = {ctx.user_id}
+                if pat_record:
+                    valid_ids.add(str(pat_record.id))
+                if ctx.patient_id:
+                    valid_ids.add(str(ctx.patient_id))
+
+                if str(patient_id) not in valid_ids:
+                    logger.warning(
+                        "Tool IDOR attempt blocked in get_patient_history",
+                        caller_user_id=ctx.user_id,
+                        attempted_patient_id=patient_id,
+                    )
+                    return {
+                        "found": False,
+                        "error": "Unauthorized: You can only view your own medical history.",
+                    }
+
             pid = uuid.UUID(patient_id)
 
             # Fetch patient profile

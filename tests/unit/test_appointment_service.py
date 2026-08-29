@@ -77,6 +77,67 @@ class TestCreateAppointment:
         assert captured["patient_id"] == str(patient_id)
         assert captured["doctor_id"] == str(doctor_id)
 
+    async def test_patient_limit_exceeded_raises_value_error(self, appt_service: AppointmentService):
+        """When patient has 2 active appointments, creating a 3rd raises ValueError."""
+        pid = uuid.uuid4()
+        did = uuid.uuid4()
+        existing1 = MagicMock(patient_id=str(pid), doctor_id=str(uuid.uuid4()), scheduled_at=datetime.now(timezone.utc))
+        existing2 = MagicMock(patient_id=str(pid), doctor_id=str(uuid.uuid4()), scheduled_at=datetime.now(timezone.utc))
+
+        mock_res = MagicMock()
+        mock_res.scalars.return_value.all.return_value = [existing1, existing2]
+        appt_service.session.execute = AsyncMock(return_value=mock_res)
+
+        data = AppointmentCreate(
+            patient_id=pid,
+            doctor_id=did,
+            scheduled_at=datetime.now(timezone.utc),
+        )
+        with pytest.raises(ValueError, match="Booking limit reached"):
+            await appt_service.create_appointment(data)
+
+    async def test_slot_capacity_exceeded_raises_value_error(self, appt_service: AppointmentService):
+        """When a slot has 2 bookings, creating a 3rd raises ValueError."""
+        pid = uuid.uuid4()
+        did = uuid.uuid4()
+        slot = datetime.now(timezone.utc)
+        existing1 = MagicMock(patient_id=str(uuid.uuid4()), doctor_id=str(did), scheduled_at=slot)
+        existing2 = MagicMock(patient_id=str(uuid.uuid4()), doctor_id=str(did), scheduled_at=slot)
+
+        # First query (patient active) returns empty, second query (slot active) returns 2
+        mock_pat_res = MagicMock()
+        mock_pat_res.scalars.return_value.all.return_value = []
+        mock_slot_res = MagicMock()
+        mock_slot_res.scalars.return_value.all.return_value = [existing1, existing2]
+        appt_service.session.execute = AsyncMock(side_effect=[mock_pat_res, mock_slot_res])
+
+        data = AppointmentCreate(
+            patient_id=pid,
+            doctor_id=did,
+            scheduled_at=slot,
+        )
+        with pytest.raises(ValueError, match="Slot booking limit reached"):
+            await appt_service.create_appointment(data)
+
+    async def test_duplicate_slot_booking_by_same_patient_raises_value_error(self, appt_service: AppointmentService):
+        """When same patient books the same doctor and slot twice, raises ValueError."""
+        pid = uuid.uuid4()
+        did = uuid.uuid4()
+        slot = datetime.now(timezone.utc)
+        existing = MagicMock(patient_id=str(pid), doctor_id=str(did), scheduled_at=slot)
+
+        mock_res = MagicMock()
+        mock_res.scalars.return_value.all.return_value = [existing]
+        appt_service.session.execute = AsyncMock(return_value=mock_res)
+
+        data = AppointmentCreate(
+            patient_id=pid,
+            doctor_id=did,
+            scheduled_at=slot,
+        )
+        with pytest.raises(ValueError, match="already have an active appointment"):
+            await appt_service.create_appointment(data)
+
 
 class TestGetAppointment:
     async def test_returns_appointment_out_when_found(self, appt_service: AppointmentService):

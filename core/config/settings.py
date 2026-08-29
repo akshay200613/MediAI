@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     langgraph_recursion_limit: int = 25
     langgraph_checkpoint_backend: str = "memory"  # "memory" | "redis"
 
+    # ── Appointment Booking Limits ────────────────────────────────────────────
+    max_bookings_per_slot: int = 2
+    max_active_appointments_per_patient: int = 2
+
     # ── Computed ─────────────────────────────────────────────────────────────
     @computed_field  # type: ignore[prop-decorator]
     @property

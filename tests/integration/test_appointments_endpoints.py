@@ -159,10 +159,12 @@ class TestBookAppointment:
         pid = uuid.uuid4()
         did = uuid.uuid4()
 
-        # Simulate existing appointment at same slot
-        existing = MagicMock()
+        # Simulate existing appointments at same slot filling the capacity of 2
+        existing1 = MagicMock()
+        existing2 = MagicMock()
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
+        mock_result.scalars.return_value.all.return_value = [existing1, existing2]
+        mock_result.scalar_one_or_none.return_value = existing1
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         resp = await async_client.post(
@@ -171,6 +173,7 @@ class TestBookAppointment:
             headers=patient_headers,
         )
         assert resp.status_code == 409
+
 
 
 # ── POST /appointments/{id}/cancel ────────────────────────────────────────────

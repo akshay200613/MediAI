@@ -146,9 +146,9 @@ graph TD
 
 ### Model Routing & Resilience
 MediAI uses **LiteLLM Router** with automatic fallback handling:
-- **Primary LLM**: Google Gemini 2.0 Flash (`gemini/gemini-2.0-flash`)
-- **Fallback LLM**: Groq / Llama 3.3 70B Versatile (`groq/llama-3.3-70b-versatile`)
-- **Embeddings**: Gemini `text-embedding-001` / HuggingFace `all-MiniLM-L6-v2`
+- **Primary LLM**: Google gemini-3.6-flash (`gemini/gemini-3.6-flash`)
+- **Fallback LLM**: Groq / Llama 3.3 70B Versatile (`groq/openai/gpt-oss-120b`)
+- **Embeddings**: Gemini `text-embedding-001` 
 
 ---
 

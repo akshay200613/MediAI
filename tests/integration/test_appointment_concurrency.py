@@ -57,18 +57,19 @@ def _book_payload(
     }
 
 
-# ─── Double-booking guard ─────────────────────────────────────────────────────
+# ─── Double-booking and Slot Capacity guard ──────────────────────────────────
 
 class TestDoubleBookingPrevention:
     async def test_first_booking_succeeds(
         self, async_client: AsyncClient, patient_headers: dict, mock_session: AsyncMock
     ):
-        """When no conflicting appointment exists, booking returns 201."""
+        """When slot capacity and patient limit are not exceeded, booking returns 201."""
         pid, did = uuid.uuid4(), uuid.uuid4()
         appt = _appt_out(patient_id=pid, doctor_id=did)
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None  # No existing booking
+        mock_result.scalars.return_value.all.return_value = []  # No existing booking
+        mock_result.scalar_one_or_none.return_value = None
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         with patch(
@@ -88,16 +89,18 @@ class TestDoubleBookingPrevention:
         assert resp.status_code == 201
         assert resp.json()["data"]["status"] == "scheduled"
 
-    async def test_second_booking_same_slot_returns_409(
+    async def test_slot_capacity_exceeded_returns_409(
         self, async_client: AsyncClient, patient_headers: dict, mock_session: AsyncMock
     ):
-        """Second booking at the identical doctor+time slot → 409 Conflict."""
+        """When slot already has 2 bookings (max capacity reached), booking returns 409 Conflict."""
         pid, did = uuid.uuid4(), uuid.uuid4()
 
-        # Simulate an existing appointment
-        existing = MagicMock()
+        # Simulate 2 existing appointments at this slot
+        existing1 = MagicMock(doctor_id=str(did), patient_id=str(uuid.uuid4()))
+        existing2 = MagicMock(doctor_id=str(did), patient_id=str(uuid.uuid4()))
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
+        mock_result.scalars.return_value.all.return_value = [existing1, existing2]
+        mock_result.scalar_one_or_none.return_value = existing1
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         resp = await async_client.post(
@@ -107,7 +110,30 @@ class TestDoubleBookingPrevention:
         )
 
         assert resp.status_code == 409
-        assert "double booking" in resp.json()["detail"].lower()
+        assert "slot booking limit" in resp.json()["detail"].lower() or "limit" in resp.json()["detail"].lower()
+
+    async def test_patient_limit_exceeded_returns_409(
+        self, async_client: AsyncClient, patient_headers: dict, mock_session: AsyncMock
+    ):
+        """When patient already has 2 active appointments, booking a 3rd returns 409 Conflict."""
+        pid, did = uuid.uuid4(), uuid.uuid4()
+
+        # Simulate 2 existing active appointments for this patient
+        existing1 = MagicMock(doctor_id=str(uuid.uuid4()), patient_id=str(pid))
+        existing2 = MagicMock(doctor_id=str(uuid.uuid4()), patient_id=str(pid))
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [existing1, existing2]
+        mock_result.scalar_one_or_none.return_value = existing1
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        resp = await async_client.post(
+            f"{BASE}/book",
+            json=_book_payload(pid, did),
+            headers=patient_headers,
+        )
+
+        assert resp.status_code == 409
+        assert "booking limit reached" in resp.json()["detail"].lower() or "active appointment" in resp.json()["detail"].lower()
 
     async def test_booking_different_time_slot_same_doctor_succeeds(
         self, async_client: AsyncClient, patient_headers: dict, mock_session: AsyncMock
@@ -121,6 +147,7 @@ class TestDoubleBookingPrevention:
 
         # No conflict for slot2
         mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute = AsyncMock(return_value=mock_result)
 
@@ -144,9 +171,10 @@ class TestDoubleBookingPrevention:
         pid, did = uuid.uuid4(), uuid.uuid4()
         appt = _appt_out(patient_id=pid, doctor_id=did, status="scheduled")
 
-        # Cancelled appointments are excluded from the double-booking query
+        # Cancelled appointments are excluded from active checks
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None  # Query excludes CANCELLED
+        mock_result.scalars.return_value.all.return_value = []
+        mock_result.scalar_one_or_none.return_value = None
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         with patch(
@@ -180,13 +208,16 @@ class TestBookedSlotsEndpoint:
         )
         assert resp.status_code in (401, 403)
 
-    async def test_booked_slots_returns_list(
+    async def test_booked_slots_returns_only_full_slots(
         self, async_client: AsyncClient, doctor_headers: dict, mock_session: AsyncMock
     ):
-        """Returns a list of ISO datetime strings for booked slots."""
-        slot_dt = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        """Returns slots that have reached maximum capacity (2 bookings)."""
+        slot_full = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        slot_partial = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+        # slot_full has 2 bookings (full), slot_partial has 1 booking (still open)
         mock_scalars = MagicMock()
-        mock_scalars.scalars.return_value = [slot_dt]
+        mock_scalars.scalars.return_value.all.return_value = [slot_full, slot_full, slot_partial]
         mock_session.execute = AsyncMock(return_value=mock_scalars)
 
         resp = await async_client.get(
@@ -197,13 +228,15 @@ class TestBookedSlotsEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert isinstance(body["data"], list)
+        assert slot_full.isoformat() in body["data"]
+        assert slot_partial.isoformat() not in body["data"]
 
     async def test_booked_slots_empty_when_no_bookings(
         self, async_client: AsyncClient, doctor_headers: dict, mock_session: AsyncMock
     ):
         """Empty result when no appointments exist on that date."""
         mock_scalars = MagicMock()
-        mock_scalars.scalars.return_value = []
+        mock_scalars.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=mock_scalars)
 
         resp = await async_client.get(
@@ -230,7 +263,7 @@ class TestBookedSlotsEndpoint:
     ):
         """Patients (with VIEW_APPOINTMENT permission) can also query booked slots."""
         mock_scalars = MagicMock()
-        mock_scalars.scalars.return_value = []
+        mock_scalars.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=mock_scalars)
 
         resp = await async_client.get(
@@ -244,44 +277,47 @@ class TestBookedSlotsEndpoint:
 # ─── Concurrent-style sequential tests ───────────────────────────────────────
 
 class TestConcurrentBookingSimulation:
-    async def test_first_wins_second_loses_sequential(
+    async def test_slot_capacity_reaches_limit_sequential(
         self, async_client: AsyncClient, patient_headers: dict, mock_session: AsyncMock
     ):
         """
-        Simulate two requests for the same slot arriving one after the other.
-        First sees no existing booking → 201.
-        Second sees the existing booking → 409.
+        Simulate requests for the same slot arriving sequentially.
+        When capacity is 2, the 3rd booking fails with 409.
         """
-        pid, did = uuid.uuid4(), uuid.uuid4()
+        did = uuid.uuid4()
         slot = datetime.now(timezone.utc)
-        appt = _appt_out(patient_id=pid, doctor_id=did, scheduled_at=slot)
+        appt1 = _appt_out(patient_id=uuid.uuid4(), doctor_id=did, scheduled_at=slot)
 
-        # First request: no conflict
+        # First request: capacity available
         free_result = MagicMock()
-        free_result.scalar_one_or_none.return_value = None
+        free_result.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=free_result)
 
         with patch(
             "domains.medai.services.appointment_service.AppointmentService.create_appointment",
-            new=AsyncMock(return_value=appt),
+            new=AsyncMock(return_value=appt1),
         ):
             with patch("domains.medai.websockets.manager.manager.notify_appointment_event", new=AsyncMock()):
                 resp1 = await async_client.post(
                     f"{BASE}/book",
-                    json=_book_payload(pid, did, slot),
+                    json=_book_payload(uuid.uuid4(), did, slot),
                     headers=patient_headers,
                 )
 
         assert resp1.status_code == 201
 
-        # Second request: conflict exists
-        conflict_result = MagicMock()
-        conflict_result.scalar_one_or_none.return_value = MagicMock()
-        mock_session.execute = AsyncMock(return_value=conflict_result)
+        # 3rd request: 2 existing bookings already fill the slot
+        existing1 = MagicMock(doctor_id=str(did), scheduled_at=slot)
+        existing2 = MagicMock(doctor_id=str(did), scheduled_at=slot)
+        full_result = MagicMock()
+        full_result.scalars.return_value.all.return_value = [existing1, existing2]
+        full_result.scalar_one_or_none.return_value = existing1
+        mock_session.execute = AsyncMock(return_value=full_result)
 
-        resp2 = await async_client.post(
+        resp3 = await async_client.post(
             f"{BASE}/book",
             json=_book_payload(uuid.uuid4(), did, slot),
             headers=patient_headers,
         )
-        assert resp2.status_code == 409
+        assert resp3.status_code == 409
+

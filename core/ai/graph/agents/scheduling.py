@@ -46,6 +46,9 @@ CRITICAL RULES FOR CHATBOT UX:
    - If NO mandatory fields are missing (or all are present in the patient record), NEVER ask for profile details and NEVER output the `complete_profile` card. Proceed directly with checking availability, slot selection, and booking confirmation.
    - If the patient selects "Provide details in chat" or responds with missing info, conversationally ask for ONLY the missing mandatory fields one by one. Do NOT ask for fields already present.
    - If the patient returns after updating their profile on the Profile page, give a warm welcome back message (e.g. "Welcome back! Your profile has been updated. Let's continue booking your appointment.") and continue the booking flow from the exact previous step.
+6. BOOKING LIMITS RULE:
+   - Each patient can have at most 2 active (scheduled/confirmed/in-progress) appointments at a time. If the patient already has 2 active appointments, let them know politely that they must complete or cancel an existing appointment before booking another.
+   - Each time slot supports a maximum capacity of 2 bookings. If a slot is fully booked (2 bookings), suggest other available time slots.
 
 ### Supported UI Action Blocks (Output these ONLY as raw markdown code blocks in your chat response, NEVER as a tool call):
 

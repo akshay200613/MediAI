@@ -119,22 +119,20 @@ class TestAppointmentConfirmationAndScheduler:
         service = AppointmentService(mock_session)
         service.repo.create = AsyncMock(return_value=mock_appointment)
 
-        # Configure session.execute to return doctor, no conflicting appointments, and patient
-        mock_exec_result_empty = MagicMock()
-        mock_exec_result_empty.scalar_one_or_none.return_value = None
+        def _mock_execute_side_effect(stmt, *args, **kwargs):
+            stmt_str = str(stmt)
+            res = MagicMock()
+            if "medai_doctors" in stmt_str or "Doctor" in stmt_str:
+                res.scalar_one_or_none.return_value = mock_doctor
+            elif "medai_patients" in stmt_str or "Patient" in stmt_str:
+                res.scalar_one_or_none.return_value = mock_patient
+            else:
+                res.scalars.return_value.all.return_value = []
+                res.scalar_one_or_none.return_value = None
+            return res
 
-        mock_exec_result_doctor = MagicMock()
-        mock_exec_result_doctor.scalar_one_or_none.return_value = mock_doctor
+        mock_session.execute = AsyncMock(side_effect=_mock_execute_side_effect)
 
-        mock_exec_result_patient = MagicMock()
-        mock_exec_result_patient.scalar_one_or_none.return_value = mock_patient
-
-        # Responses sequence: 1. check conflict, 2. check doctor, 3. fetch patient for email
-        mock_session.execute.side_effect = [
-            mock_exec_result_empty,
-            mock_exec_result_doctor,
-            mock_exec_result_patient,
-        ]
 
         with patch.object(email_service, "send_email", new_callable=AsyncMock) as mock_send:
             mock_send.return_value = True

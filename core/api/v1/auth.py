@@ -15,8 +15,9 @@ from core.auth.jwt_handler import (
 from core.models.user import User
 from domains.medai.models.doctor import Doctor
 from domains.medai.models.patient import Patient
+from fastapi.security import HTTPAuthorizationCredentials
 from core.repositories.base_repository import BaseRepository
-from core.auth.dependencies import CurrentUser, get_current_user, require_roles
+from core.auth.dependencies import CurrentUser, get_current_user, require_roles, bearer_scheme
 from core.metrics import auth_login_total
 
 router = APIRouter()
@@ -162,6 +163,13 @@ async def refresh_token(
     body: RefreshTokenRequest,
     session: AsyncSession = Depends(get_db),
 ) -> DataResponse[TokenResponse]:
+    from core.auth.token_blacklist import is_token_blacklisted
+    if await is_token_blacklisted(body.refresh_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
+        )
+
     try:
         payload = decode_token(body.refresh_token)
         if payload.get("type") != "refresh":
@@ -184,6 +192,32 @@ async def refresh_token(
             expires_in=settings.jwt_access_token_expire_minutes * 60,
         ),
         message="Token refreshed",
+    )
+
+
+@router.post("/logout", response_model=DataResponse[dict], summary="User logout and token revocation")
+async def logout(
+    body: RefreshTokenRequest | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> DataResponse[dict]:
+    """Revoke active access and refresh tokens to prevent reuse."""
+    from core.auth.token_blacklist import blacklist_token
+    from core.config.settings import settings
+
+    access_ttl = settings.jwt_access_token_expire_minutes * 60
+    refresh_ttl = settings.jwt_refresh_token_expire_days * 86400
+
+    # Blacklist the current bearer access token
+    await blacklist_token(credentials.credentials, expires_in_seconds=access_ttl)
+
+    # Blacklist the provided refresh token if present
+    if body and body.refresh_token:
+        await blacklist_token(body.refresh_token, expires_in_seconds=refresh_ttl)
+
+    return DataResponse(
+        data={"revoked": True},
+        message="Successfully logged out",
     )
 
 

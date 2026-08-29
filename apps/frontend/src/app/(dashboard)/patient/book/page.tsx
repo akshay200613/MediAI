@@ -37,6 +37,22 @@ export default function PatientBookPage() {
     return `${hours.toString().padStart(2, '0')}:${m} ${ampm}`;
   }
 
+  // Active appointments limit tracking (max 2)
+  const [activeAppointmentsCount, setActiveAppointmentsCount] = useState<number>(0)
+
+  const fetchActiveAppointmentsCount = async () => {
+    try {
+      const res = await apiClient.get('/medai/appointments?upcoming_only=true')
+      const list = Array.isArray(res.data?.data) ? res.data.data : []
+      const active = list.filter((a: any) =>
+        ['scheduled', 'confirmed', 'in_progress'].includes(String(a?.status || '').toLowerCase())
+      )
+      setActiveAppointmentsCount(active.length)
+    } catch (err) {
+      console.warn('Failed to fetch active appointments count', err)
+    }
+  }
+
   // Fetch available doctors
   useEffect(() => {
     const fetchDoctors = async () => {
@@ -52,6 +68,7 @@ export default function PatientBookPage() {
     }
     fetchDoctors()
     fetchProfileStatus()
+    fetchActiveAppointmentsCount()
   }, [])
 
   // Patient Profile Completeness State
@@ -156,11 +173,12 @@ export default function PatientBookPage() {
     fetchBookedSlots()
   }, [selectedDoctor])
 
-  // Real-time slot synchronization: update booked slots instantly on WebSocket events
+  // Real-time slot synchronization: update booked slots and active appointments instantly on WebSocket events
   useAppointmentSocket(() => {
     if (selectedDoctor) {
       fetchBookedSlots()
     }
+    fetchActiveAppointmentsCount()
   })
 
   const parseAllowedDays = (daysStr?: string): string[] => {
@@ -358,14 +376,27 @@ export default function PatientBookPage() {
       setTimeout(() => router.push('/patient/appointments'), 2000)
     } catch (err: any) {
       const errorDetail = err.response?.data?.detail || err.message || ''
-      if (errorDetail.toLowerCase().includes('double booking')) {
+      const lowerErr = errorDetail.toLowerCase()
+      if (lowerErr.includes('slot booking limit') || lowerErr.includes('double booking')) {
         setBookingStatus({
           success: false,
-          message: `This slot is no longer available. Someone else just booked ${format12Hr(bookingTime)}. Please choose another available time.`,
+          message: `This slot has reached maximum capacity (2 bookings). Please choose another available time slot.`,
         })
         setBookingTime('')
         setCurrentStep(3)
         fetchBookedSlots()
+      } else if (lowerErr.includes('booking limit reached') || lowerErr.includes('maximum of 2 active')) {
+        setBookingStatus({
+          success: false,
+          message: errorDetail,
+        })
+        fetchActiveAppointmentsCount()
+      } else if (lowerErr.includes('already have an active appointment')) {
+        setBookingStatus({
+          success: false,
+          message: 'You already have an active appointment booked for this time slot.',
+        })
+        setCurrentStep(3)
       } else {
         setBookingStatus({
           success: false,
@@ -376,6 +407,7 @@ export default function PatientBookPage() {
     } finally {
       setIsBooking(false)
     }
+
   }
 
   if (loading) {
@@ -425,6 +457,26 @@ export default function PatientBookPage() {
         <h1 className="text-2xl font-bold tracking-tight text-slate-100">Book Doctor Appointment</h1>
         <p className="text-xs text-slate-400 mt-1">Select a doctor to view their specific available days and working hours.</p>
       </div>
+
+      {activeAppointmentsCount >= 2 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start justify-between gap-3 shadow-lg">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-amber-300">Active Booking Limit Reached (2/2)</p>
+              <p className="text-[11px] text-amber-200/80 mt-0.5">
+                You already have {activeAppointmentsCount} active appointments scheduled. Hospital policy allows a maximum of 2 active bookings per patient. Please complete or cancel an existing appointment before booking a new one.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => router.push('/patient/appointments')}
+            className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold border border-amber-500/30 shrink-0 transition-colors"
+          >
+            My Appointments
+          </button>
+        </div>
+      )}
 
       {bookingStatus && (
         <div

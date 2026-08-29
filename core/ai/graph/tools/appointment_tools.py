@@ -19,6 +19,7 @@ from typing import Any
 from core.ai.graph.tools.server import mcp_server
 from core.config.logging import get_logger
 from core.database.base import AsyncSessionLocal
+from core.ai.graph.tools.context import get_tool_security_context
 
 
 logger = get_logger(__name__)
@@ -44,12 +45,41 @@ async def list_appointments(
     from domains.medai.services.appointment_service import (
         AppointmentService,
     )
+    from domains.medai.services.patient_service import (
+        PatientService,
+    )
+
+    ctx = get_tool_security_context()
+    effective_patient_id = patient_id
 
     try:
         async with AsyncSessionLocal() as session:
+            # Authorization / IDOR Protection
+            if ctx and ctx.role in ("patient", "user"):
+                pat_svc = PatientService(session)
+                pat_record = await pat_svc.get_patient_by_user_id(ctx.user_id, user_email=ctx.email)
+                valid_ids = {ctx.user_id}
+                if pat_record:
+                    valid_ids.add(str(pat_record.id))
+                if ctx.patient_id:
+                    valid_ids.add(str(ctx.patient_id))
+
+                if str(patient_id) not in valid_ids:
+                    logger.warning(
+                        "Tool IDOR attempt blocked in list_appointments",
+                        caller_user_id=ctx.user_id,
+                        attempted_patient_id=patient_id,
+                    )
+                    return {
+                        "count": 0,
+                        "appointments": [],
+                        "error": "Unauthorized: Cannot access appointments for another patient.",
+                    }
+                effective_patient_id = str(pat_record.id) if pat_record else str(patient_id)
+
             service = AppointmentService(session)
 
-            appointments = await service.get_by_patient(patient_id)
+            appointments = await service.get_by_patient(effective_patient_id)
 
             # Filter by status if provided
             if status:
@@ -108,15 +138,41 @@ async def book_appointment(
     from domains.medai.services.appointment_service import (
         AppointmentService,
     )
+    from domains.medai.services.patient_service import (
+        PatientService,
+    )
     from domains.medai.schemas.appointment import AppointmentCreate
     from datetime import datetime
+    import uuid
+
+    ctx = get_tool_security_context()
+    target_patient_id = patient_id
 
     try:
         async with AsyncSessionLocal() as session:
+            # Authorization / IDOR Protection: Override / Validate patient_id for patient role
+            if ctx and ctx.role in ("patient", "user"):
+                pat_svc = PatientService(session)
+                pat_record = await pat_svc.get_patient_by_user_id(ctx.user_id, user_email=ctx.email)
+                if pat_record:
+                    target_patient_id = str(pat_record.id)
+                elif ctx.patient_id:
+                    target_patient_id = str(ctx.patient_id)
+                else:
+                    target_patient_id = str(ctx.user_id)
+
+                if patient_id and str(patient_id) != target_patient_id:
+                    logger.info(
+                        "Corrected LLM-generated patient_id to authenticated caller patient_id",
+                        caller_user_id=ctx.user_id,
+                        llm_patient_id=patient_id,
+                        actual_patient_id=target_patient_id,
+                    )
+
             service = AppointmentService(session)
 
             create_data = AppointmentCreate(
-                patient_id=patient_id,
+                patient_id=target_patient_id,
                 doctor_id=doctor_id,
                 scheduled_at=datetime.fromisoformat(scheduled_at),
                 appointment_type=appointment_type,
@@ -166,14 +222,49 @@ async def cancel_appointment(
     from domains.medai.services.appointment_service import (
         AppointmentService,
     )
+    from domains.medai.services.patient_service import (
+        PatientService,
+    )
     import uuid
+
+    ctx = get_tool_security_context()
 
     try:
         async with AsyncSessionLocal() as session:
             service = AppointmentService(session)
+            appt_uuid = uuid.UUID(appointment_id)
+
+            existing_appt = await service.get_appointment(appt_uuid)
+            if existing_appt is None:
+                return {
+                    "success": False,
+                    "error": f"Appointment {appointment_id} not found",
+                }
+
+            # Authorization Check
+            if ctx and ctx.role in ("patient", "user"):
+                pat_svc = PatientService(session)
+                pat_record = await pat_svc.get_patient_by_user_id(ctx.user_id, user_email=ctx.email)
+                valid_patient_ids = {ctx.user_id}
+                if pat_record:
+                    valid_patient_ids.add(str(pat_record.id))
+                if ctx.patient_id:
+                    valid_patient_ids.add(str(ctx.patient_id))
+
+                if str(existing_appt.patient_id) not in valid_patient_ids:
+                    logger.warning(
+                        "Tool IDOR attempt blocked in cancel_appointment",
+                        caller_user_id=ctx.user_id,
+                        appointment_id=appointment_id,
+                        appointment_patient_id=str(existing_appt.patient_id),
+                    )
+                    return {
+                        "success": False,
+                        "error": "Unauthorized: You can only cancel your own appointments.",
+                    }
 
             appointment = await service.cancel_appointment(
-                uuid.UUID(appointment_id)
+                appt_uuid
             )
 
             if appointment is None:

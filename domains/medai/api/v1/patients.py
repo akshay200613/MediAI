@@ -103,8 +103,14 @@ async def list_patients(
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = Query(None),
     session: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_permission(Permission.VIEW_PATIENT)),
+    current_user: CurrentUser = Depends(require_permission(Permission.VIEW_PATIENT)),
 ) -> PaginatedResponse[PatientOut]:
+    if current_user.role in ("patient", "user"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Patients are not permitted to list the patient registry",
+        )
+
     svc = PatientService(session)
     if search:
         patients = await svc.search_patients(search)
@@ -123,9 +129,22 @@ async def list_patients(
 async def get_patient(
     patient_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_permission(Permission.VIEW_PATIENT)),
+    current_user: CurrentUser = Depends(require_permission(Permission.VIEW_PATIENT)),
 ) -> DataResponse[PatientOut]:
     svc = PatientService(session)
+
+    # Authorization / BOLA check
+    if current_user.role in ("patient", "user"):
+        pat_record = await svc.get_patient_by_user_id(current_user.user_id, user_email=current_user.email)
+        valid_ids = {str(current_user.user_id)}
+        if pat_record:
+            valid_ids.add(str(pat_record.id))
+        if str(patient_id) not in valid_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You can only view your own patient record",
+            )
+
     patient = await svc.get_patient(patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -141,9 +160,22 @@ async def update_patient(
     patient_id: uuid.UUID,
     data: PatientUpdate,
     session: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_permission(Permission.UPDATE_PATIENT)),
+    current_user: CurrentUser = Depends(require_permission(Permission.UPDATE_PATIENT)),
 ) -> DataResponse[PatientOut]:
     svc = PatientService(session)
+
+    # Authorization / BOLA check
+    if current_user.role in ("patient", "user"):
+        pat_record = await svc.get_patient_by_user_id(current_user.user_id, user_email=current_user.email)
+        valid_ids = {str(current_user.user_id)}
+        if pat_record:
+            valid_ids.add(str(pat_record.id))
+        if str(patient_id) not in valid_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You can only update your own patient record",
+            )
+
     patient = await svc.update_patient(patient_id, data)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -158,8 +190,14 @@ async def update_patient(
 async def delete_patient(
     patient_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_permission(Permission.DELETE_PATIENT)),
+    current_user: CurrentUser = Depends(require_permission(Permission.DELETE_PATIENT)),
 ) -> None:
+    if current_user.role in ("patient", "user"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Patients cannot delete patient records",
+        )
+
     svc = PatientService(session)
     deleted = await svc.delete_patient(patient_id)
     if not deleted:

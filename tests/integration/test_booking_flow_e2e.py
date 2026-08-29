@@ -146,8 +146,9 @@ class TestCompleteBookingFlow:
         self, async_client: AsyncClient, doctor_headers: dict, mock_session: AsyncMock
     ):
         mock_scalars = MagicMock()
-        mock_scalars.scalars.return_value = [self._slot]
+        mock_scalars.scalars.return_value = [self._slot, self._slot]
         mock_session.execute = AsyncMock(return_value=mock_scalars)
+
 
         resp = await async_client.get(
             f"{BASE}/booked-slots",
