@@ -4,12 +4,18 @@ Patient model – MedAI domain.
 
 from datetime import date
 from enum import StrEnum
+import uuid
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Date, String, Text
+from sqlalchemy import Date, String, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.models.base_model import AuditableModel
+
+if TYPE_CHECKING:
+    from core.models.user import User
+    from domains.medai.models.appointment import Appointment
 
 
 class BloodGroup(StrEnum):
@@ -53,7 +59,16 @@ class Patient(AuditableModel):
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Platform link
-    user_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="patient", foreign_keys=[user_id])
+    appointments: Mapped[list["Appointment"]] = relationship("Appointment", back_populates="patient", cascade="all, delete-orphan")
 
     @property
     def full_name(self) -> str:
@@ -61,3 +76,4 @@ class Patient(AuditableModel):
 
     def __repr__(self) -> str:
         return f"<Patient id={self.id} name={self.full_name}>"
+

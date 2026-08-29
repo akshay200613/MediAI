@@ -14,7 +14,7 @@ from alembic import context
 # Import all models so Alembic can detect them
 from core.database.base import Base
 from core.models import user, audit_log  # noqa: F401
-from domains.medai.models import patient, doctor, appointment  # noqa: F401
+from domains.medai.models import patient, doctor, appointment, chat_history  # noqa: F401
 
 config = context.config
 target_metadata = Base.metadata
@@ -23,9 +23,6 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from core.config.settings import settings
-print("=" * 80)
-print("DATABASE_URL:", repr(settings.database_url))
-print("=" * 80)
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 

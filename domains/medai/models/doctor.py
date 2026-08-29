@@ -2,17 +2,29 @@
 Doctor model – MedAI domain.
 """
 
-from sqlalchemy import Boolean, String, Text
+from typing import TYPE_CHECKING
+import uuid
+from sqlalchemy import Boolean, String, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.models.base_model import AuditableModel
+
+if TYPE_CHECKING:
+    from core.models.user import User
+    from domains.medai.models.appointment import Appointment
 
 
 class Doctor(AuditableModel):
     __tablename__ = "medai_doctors"
 
-    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False, unique=True, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
@@ -31,9 +43,14 @@ class Doctor(AuditableModel):
     working_hours_end: Mapped[str | None] = mapped_column(String(5), nullable=True)   # "17:00"
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="doctor", foreign_keys=[user_id])
+    appointments: Mapped[list["Appointment"]] = relationship("Appointment", back_populates="doctor", cascade="all, delete-orphan")
+
     @property
     def full_name(self) -> str:
         return f"Dr. {self.first_name} {self.last_name}"
 
     def __repr__(self) -> str:
         return f"<Doctor id={self.id} name={self.full_name} specialty={self.specialty}>"
+

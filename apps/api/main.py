@@ -54,10 +54,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from core.ai.llm.litellm_client import reset_router
     reset_router()
 
-    # Ensure DB tables exist (for dev; use Alembic in prod)
-    if settings.is_development:
+    # Ensure DB tables exist (strictly for development; production schemas are managed by Alembic)
+    if settings.is_development and not settings.is_production:
+        logger.info("Development mode: verifying base tables (create_all)")
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+    else:
+        logger.info("Production mode: table schema is managed strictly via Alembic migrations")
 
     # Pre-warm Redis pool
     get_redis_pool()
