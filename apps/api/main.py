@@ -1,14 +1,16 @@
 """
 FastAPI Application Factory.
-Wires together middleware, routers, domain registries, and lifespan events.
+Wires together middleware, routers, domain registries, exception handlers, and lifespan events.
 """
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+import structlog
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, ORJSONResponse
+from fastapi.responses import JSONResponse
 
 from core.config.settings import settings
 from core.config.logging import configure_logging, get_logger
@@ -16,8 +18,11 @@ from core.database.base import engine, Base
 from core.database.redis_client import get_redis_pool, close_redis_pool
 from core.database.qdrant_client import close_qdrant_client
 from core.api.v1.router import core_v1_router
-from core.metrics import create_instrumentator, app_info, init_metrics
+from core.metrics import create_instrumentator, app_info, init_metrics, exceptions_total
+from core.middleware.request_context import RequestContextMiddleware
 from core.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
+from core.exceptions import MediAIException
+from core.ai.llm.litellm_client import AIServiceUnavailableError
 
 # ── Domain Registries ─────────────────────────────────────────────────────────
 from domains.medai.registry import register as register_medai
@@ -98,7 +103,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── Security & CORS Middleware ────────────────────────────────────────────
+    # ── Middleware (Registered in order of execution: outer to inner) ───────────
+    app.add_middleware(RequestContextMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(
@@ -110,26 +116,110 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Global Exception Handler ──────────────────────────────────────────────
-    @app.exception_handler(Exception)
-    async def global_exception_handler(request: Request, exc: Exception):
-        logger.error("Unhandled Exception", path=request.url.path, error=str(exc), exc_info=True)
-        if settings.is_production:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "success": False,
-                    "message": "An internal error occurred. Please try again later.",
-                    "data": None,
+    # ── Structured Exception Handlers ──────────────────────────────────────────
+
+    @app.exception_handler(MediAIException)
+    async def handle_mediai_exception(request: Request, exc: MediAIException):
+        req_id = request.headers.get("X-Request-ID") or structlog.contextvars.get_contextvars().get("request_id", "")
+        exceptions_total.labels(exception_type=exc.__class__.__name__, status_code=str(exc.status_code)).inc()
+        logger.warning(
+            "Application Domain Exception",
+            error_code=exc.error_code,
+            message=exc.message,
+            status_code=exc.status_code,
+            request_id=req_id,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.to_dict(request_id=req_id),
+            headers={"X-Request-ID": req_id} if req_id else None,
+        )
+
+    @app.exception_handler(AIServiceUnavailableError)
+    async def handle_ai_unavailable_error(request: Request, exc: AIServiceUnavailableError):
+        req_id = request.headers.get("X-Request-ID") or structlog.contextvars.get_contextvars().get("request_id", "")
+        exceptions_total.labels(exception_type="AIServiceUnavailableError", status_code="503").inc()
+        logger.error(
+            "AI Service Unavailable Exception",
+            error=str(exc),
+            status_code=503,
+            request_id=req_id,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "success": False,
+                "error": {
+                    "code": "AI_SERVICE_UNAVAILABLE",
+                    "message": AIServiceUnavailableError.USER_MESSAGE,
+                    "details": None,
                 },
-            )
+                "request_id": req_id,
+            },
+            headers={"X-Request-ID": req_id, "Retry-After": "10"} if req_id else {"Retry-After": "10"},
+        )
+
+    @app.exception_handler(HTTPException)
+    async def handle_http_exception(request: Request, exc: HTTPException):
+        req_id = request.headers.get("X-Request-ID") or structlog.contextvars.get_contextvars().get("request_id", "")
+        exceptions_total.labels(exception_type="HTTPException", status_code=str(exc.status_code)).inc()
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "success": False,
+                "error": {
+                    "code": f"HTTP_{exc.status_code}",
+                    "message": exc.detail,
+                    "details": None,
+                },
+                "request_id": req_id,
+            },
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_validation_error(request: Request, exc: RequestValidationError):
+        req_id = request.headers.get("X-Request-ID") or structlog.contextvars.get_contextvars().get("request_id", "")
+        exceptions_total.labels(exception_type="RequestValidationError", status_code="422").inc()
+        logger.warning("Request validation failed", errors=exc.errors(), request_id=req_id)
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid request payload or parameters",
+                    "details": exc.errors(),
+                },
+                "request_id": req_id,
+            },
+            headers={"X-Request-ID": req_id} if req_id else None,
+        )
+
+    @app.exception_handler(Exception)
+    async def handle_unhandled_exception(request: Request, exc: Exception):
+        req_id = request.headers.get("X-Request-ID") or structlog.contextvars.get_contextvars().get("request_id", "")
+        exceptions_total.labels(exception_type=exc.__class__.__name__, status_code="500").inc()
+        logger.error(
+            "Unhandled Server Exception",
+            path=request.url.path,
+            error=str(exc),
+            exc_info=True,
+            request_id=req_id,
+        )
+        msg = "An internal error occurred. Please try again later." if settings.is_production else f"Internal Server Error: {str(exc)}"
         return JSONResponse(
             status_code=500,
             content={
                 "success": False,
-                "message": f"Internal Server Error: {str(exc)}",
-                "data": None,
+                "error": {
+                    "code": "INTERNAL_SERVER_ERROR",
+                    "message": msg,
+                    "details": None,
+                },
+                "request_id": req_id,
             },
+            headers={"X-Request-ID": req_id} if req_id else None,
         )
 
     # ── Core Routes ───────────────────────────────────────────────────────────

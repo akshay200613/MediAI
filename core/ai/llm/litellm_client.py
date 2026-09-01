@@ -10,6 +10,7 @@ Uses litellm.Router to:
 
 from __future__ import annotations
 
+import time
 from typing import AsyncIterator
 
 import litellm
@@ -18,7 +19,13 @@ from litellm import Router, aembedding
 from core.ai.llm.client import BaseLLMClient, LLMResponse, Message
 from core.config.logging import get_logger
 from core.config.settings import settings
-
+from core.metrics import (
+    llm_requests_total,
+    llm_request_duration_seconds,
+    llm_tokens_total,
+    llm_cost_estimated_dollars,
+    llm_fallbacks_total,
+)
 
 logger = get_logger(__name__)
 
@@ -225,6 +232,7 @@ class LiteLLMClient(BaseLLMClient):
 
         litellm_messages = self._to_litellm_messages(messages, system_prompt)
 
+        start_time = time.perf_counter()
         try:
             response = await self._router.acompletion(
                 model=model_name,
@@ -241,24 +249,50 @@ class LiteLLMClient(BaseLLMClient):
                 ),
             )
 
+            latency = time.perf_counter() - start_time
             content = response.choices[0].message.content or ""
             usage_info = getattr(response, "usage", None)
             usage = {}
+            p_tokens = 0
+            c_tokens = 0
             if usage_info:
+                p_tokens = getattr(usage_info, "prompt_tokens", 0) or 0
+                c_tokens = getattr(usage_info, "completion_tokens", 0) or 0
                 usage = {
-                    "prompt_tokens": usage_info.prompt_tokens,
-                    "completion_tokens": usage_info.completion_tokens,
-                    "total_tokens": usage_info.total_tokens,
+                    "prompt_tokens": p_tokens,
+                    "completion_tokens": c_tokens,
+                    "total_tokens": getattr(usage_info, "total_tokens", 0) or (p_tokens + c_tokens),
                 }
 
             # Log which model was actually used
             actual_model = getattr(response, "model", model_name)
-            if actual_model != model_name:
+            is_fallback = (actual_model != model_name)
+
+            # Record Prometheus Observability Metrics
+            llm_request_duration_seconds.labels(model=actual_model).observe(latency)
+            if is_fallback:
+                llm_fallbacks_total.labels(from_model=model_name, to_model=actual_model).inc()
+                llm_requests_total.labels(model=actual_model, outcome="success", fallback_used="true").inc()
                 logger.info(
                     "Fallback model used",
                     requested=model_name,
                     actual=actual_model,
+                    duration_sec=round(latency, 3),
                 )
+            else:
+                llm_requests_total.labels(model=actual_model, outcome="success", fallback_used="false").inc()
+
+            if p_tokens or c_tokens:
+                llm_tokens_total.labels(model=actual_model, token_type="prompt").inc(p_tokens)
+                llm_tokens_total.labels(model=actual_model, token_type="completion").inc(c_tokens)
+                # Estimate cost ($0.15/1M input, $0.60/1M output for flash-grade models)
+                cost = (p_tokens * 0.00000015) + (c_tokens * 0.00000060)
+                try:
+                    from litellm import completion_cost
+                    cost = completion_cost(completion_response=response)
+                except Exception:
+                    pass
+                llm_cost_estimated_dollars.labels(model=actual_model).inc(cost)
 
             return LLMResponse(
                 content=content,
@@ -267,6 +301,7 @@ class LiteLLMClient(BaseLLMClient):
             )
 
         except Exception as exc:
+            llm_requests_total.labels(model=model_name, outcome="error", fallback_used="false").inc()
             logger.error(
                 "LiteLLM Router generation failed (all deployments — Gemini and Groq both unavailable)",
                 error=str(exc),

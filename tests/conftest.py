@@ -116,15 +116,20 @@ def _build_test_app() -> FastAPI:
         yield  # skip all startup/shutdown side-effects
 
     from fastapi.middleware.cors import CORSMiddleware
+    from core.middleware.request_context import RequestContextMiddleware
     from core.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
     from core.api.v1.router import core_v1_router
     from domains.medai.registry import register as register_medai
+    from core.exceptions import MediAIException
+    from fastapi.responses import JSONResponse
+    import structlog
 
     app = FastAPI(
         title="MedAI Test",
         version="0.0.0",
         lifespan=_noop_lifespan,
     )
+    app.add_middleware(RequestContextMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(
@@ -134,6 +139,16 @@ def _build_test_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(MediAIException)
+    async def handle_mediai_exception(request, exc: MediAIException):
+        req_id = request.headers.get("X-Request-ID") or structlog.contextvars.get_contextvars().get("request_id", "")
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.to_dict(request_id=req_id),
+            headers={"X-Request-ID": req_id} if req_id else None,
+        )
+
     app.include_router(core_v1_router)
     register_medai(app)
     return app

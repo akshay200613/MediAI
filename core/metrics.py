@@ -4,10 +4,11 @@ MediAI Metrics Module – Prometheus instrumentation.
 Exposes a /metrics endpoint and tracks:
   - HTTP request counts / latency (via prometheus-fastapi-instrumentator)
   - Active WebSocket connections
-  - AI chat requests (by role)
-  - Appointment bookings (success / conflict)
-  - AI service errors (503)
-  - RAG query counts
+  - AI chat requests & LLM latency, tokens, cost, and fallback failovers
+  - Appointment bookings (success / conflict / error)
+  - Authentication attempts
+  - RAG document ingestion & indexing
+  - Exception and Redis operational metrics
 """
 
 from prometheus_client import Counter, Gauge, Histogram, Info
@@ -64,6 +65,53 @@ auth_login_total = Counter(
     ["outcome"],  # success | wrong_password | unknown_user | disabled
 )
 
+# ── LLM Observability & Latency / Tokens / Cost / Fallback ───────────────────
+
+llm_requests_total = Counter(
+    "medai_llm_requests_total",
+    "Total LLM generation requests",
+    ["model", "outcome", "fallback_used"],  # outcome: success | error | fallback
+)
+
+llm_request_duration_seconds = Histogram(
+    "medai_llm_request_duration_seconds",
+    "Latency of LLM completion calls in seconds",
+    ["model"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 3.5, 5.0, 10.0, 15.0, 30.0],
+)
+
+llm_tokens_total = Counter(
+    "medai_llm_tokens_total",
+    "Total prompt and completion tokens processed by LLMs",
+    ["model", "token_type"],  # token_type: prompt | completion
+)
+
+llm_cost_estimated_dollars = Counter(
+    "medai_llm_cost_estimated_dollars",
+    "Estimated dollar cost of LLM tokens consumed",
+    ["model"],
+)
+
+llm_fallbacks_total = Counter(
+    "medai_llm_fallbacks_total",
+    "Total failover events from primary model to fallback model",
+    ["from_model", "to_model"],
+)
+
+# ── Redis & Exceptions ───────────────────────────────────────────────────────
+
+redis_operations_total = Counter(
+    "medai_redis_operations_total",
+    "Total Redis cache, rate-limit, or state operations",
+    ["operation", "status"],  # status: success | error | fallback
+)
+
+exceptions_total = Counter(
+    "medai_exceptions_total",
+    "Total HTTP and background exceptions encountered",
+    ["exception_type", "status_code"],
+)
+
 
 def init_metrics() -> None:
     """Initialize custom metric series with default values so Prometheus exposes them immediately on startup."""
@@ -79,6 +127,13 @@ def init_metrics() -> None:
 
     for outcome in ("success", "error"):
         rag_ingest_total.labels(outcome=outcome).inc(0)
+
+    for outcome in ("success", "error"):
+        for fallback in ("true", "false"):
+            llm_requests_total.labels(model="gemini/gemini-2.5-flash", outcome=outcome, fallback_used=fallback).inc(0)
+
+    for ttype in ("prompt", "completion"):
+        llm_tokens_total.labels(model="gemini/gemini-2.5-flash", token_type=ttype).inc(0)
 
 
 # ── Instrumentator Factory ────────────────────────────────────────────────────
@@ -113,4 +168,3 @@ def create_instrumentator() -> Instrumentator:
     )
 
     return instrumentator
-
