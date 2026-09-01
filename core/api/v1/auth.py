@@ -19,11 +19,9 @@ from fastapi.security import HTTPAuthorizationCredentials
 from core.repositories.base_repository import BaseRepository
 from core.auth.dependencies import CurrentUser, get_current_user, require_roles, bearer_scheme
 from core.metrics import auth_login_total
+from core.services.password_reset_service import password_reset_state
 
 router = APIRouter()
-
-# Global tracking set for pending password reset requests requiring Admin approval
-PENDING_PASSWORD_RESET_USER_IDS: set[str] = set()
 
 
 class UserRepository(BaseRepository[User]):
@@ -46,7 +44,7 @@ async def login(
         )
 
     # Check if user has a pending password reset request requiring admin approval
-    if str(user.id) in PENDING_PASSWORD_RESET_USER_IDS:
+    if await password_reset_state.is_pending(str(user.id)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your password reset request is pending Admin approval. You will be able to log in once Admin approves and sets your new password.",
@@ -739,7 +737,12 @@ async def forgot_password(
         )
 
     # Mark password reset request as pending admin approval
-    PENDING_PASSWORD_RESET_USER_IDS.add(str(user.id))
+    await password_reset_state.mark_pending(
+        user_id=str(user.id),
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+    )
 
     # Broadcast real-time alert to all online Admins via WebSockets
     try:
@@ -766,7 +769,8 @@ async def list_pending_password_resets(
     from uuid import UUID
     repo = UserRepository(session)
     pending_list = []
-    for uid in list(PENDING_PASSWORD_RESET_USER_IDS):
+    pending_uids = await password_reset_state.list_pending_user_ids()
+    for uid in pending_uids:
         try:
             user = await repo.get_by_id(UUID(uid))
             if user:
@@ -816,7 +820,7 @@ async def admin_reset_password(
     user.is_verified = True
 
     # Clear pending password reset status upon admin approval
-    PENDING_PASSWORD_RESET_USER_IDS.discard(str(user.id))
+    await password_reset_state.clear_pending(str(user.id))
 
     await session.commit()
 

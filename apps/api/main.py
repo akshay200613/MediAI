@@ -66,6 +66,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     get_redis_pool()
     logger.info("Redis pool initialized")
 
+    # Start Distributed WebSocket Pub/Sub listener for multi-worker synchronization
+    from domains.medai.websockets.manager import manager as ws_manager
+    ws_manager.start_pubsub_listener()
+
     # Start Background Appointment Reminder Scheduler
     from domains.medai.services.reminder_scheduler import reminder_scheduler
     reminder_scheduler.start()
@@ -76,6 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("Shutting down MedAI")
     await reminder_scheduler.stop()
+    await ws_manager.stop_pubsub_listener()
     await close_redis_pool()
     await close_qdrant_client()
     await engine.dispose()

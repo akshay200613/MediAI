@@ -116,12 +116,13 @@ def _build_router() -> Router:
 
     cache_config = None
     if settings.litellm_cache_enabled:
-        if settings.redis_url and settings.redis_password:
+        if settings.redis_url or settings.redis_host:
             cache_config = {
                 "type": "redis",
                 "host": settings.redis_host,
                 "port": settings.redis_port,
-                "password": settings.redis_password,
+                "password": settings.redis_password if settings.redis_password else None,
+                "namespace": "medai:litellm",
             }
         else:
             cache_config = {"type": "local"}

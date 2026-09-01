@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config.logging import get_logger
 from core.database.base import AsyncSessionLocal
+from core.cache.distributed_lock import DistributedLock
 from core.services.email_service import email_service
 from domains.medai.models.appointment import Appointment, AppointmentStatus
 from domains.medai.models.doctor import Doctor
@@ -26,6 +27,7 @@ class AppointmentReminderScheduler:
     """
     Background worker that checks every interval for appointments occurring
     within the next 30-35 minutes and sends reminder emails.
+    Protected by DistributedLock across multi-worker deployments.
     """
 
     def __init__(self, check_interval_seconds: int = 60) -> None:
@@ -53,10 +55,16 @@ class AppointmentReminderScheduler:
         logger.info("Appointment reminder background scheduler stopped")
 
     async def _run_loop(self) -> None:
-        """Periodic background execution loop."""
+        """Periodic background execution loop with distributed lock protection."""
         while self._is_running:
             try:
-                await self.check_and_send_reminders()
+                # In multi-worker environments, only one worker acquires the lock per interval tick
+                lock_ttl = max(10, self.check_interval_seconds - 5)
+                async with DistributedLock("reminder_scheduler_tick", ttl_seconds=lock_ttl) as acquired:
+                    if acquired:
+                        await self.check_and_send_reminders()
+                    else:
+                        logger.debug("Another worker is processing reminder scheduler tick, skipping")
             except asyncio.CancelledError:
                 break
             except Exception as exc:
