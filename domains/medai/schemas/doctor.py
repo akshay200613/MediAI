@@ -18,6 +18,7 @@ class DoctorCreate(BaseSchema):
     available_days: Optional[str] = None   # e.g. "Mon,Tue,Wed,Thu,Fri"
     working_hours_start: Optional[str] = None  # "09:00"
     working_hours_end: Optional[str] = None    # "17:00"
+    profile_image_url: Optional[str] = None
 
 
 class DoctorUpdate(BaseSchema):
@@ -31,6 +32,7 @@ class DoctorUpdate(BaseSchema):
     working_hours_start: Optional[str] = None
     working_hours_end: Optional[str] = None
     is_available: Optional[bool] = None
+    profile_image_url: Optional[str] = None
 
 
 class DoctorOut(TimestampSchema):
@@ -49,3 +51,4 @@ class DoctorOut(TimestampSchema):
     working_hours_end: Optional[str] = None
     is_available: bool
     is_deleted: bool = False
+    profile_image_url: Optional[str] = None

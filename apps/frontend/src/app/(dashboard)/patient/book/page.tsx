@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, Calendar, Clock, UserCheck, CheckCircle2, AlertCircle, Loader2, Sunrise, Sun, Moon, ArrowRight, Edit2 } from 'lucide-react'
 import apiClient from '@/lib/api/client'
+import { extractErrorMessage } from '@/lib/utils'
 import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
 
 export default function PatientBookPage() {
@@ -375,32 +376,35 @@ export default function PatientBookPage() {
       })
       setTimeout(() => router.push('/patient/appointments'), 2000)
     } catch (err: any) {
-      const errorDetail = err.response?.data?.detail || err.message || ''
-      const lowerErr = errorDetail.toLowerCase()
-      if (lowerErr.includes('slot booking limit') || lowerErr.includes('double booking')) {
+      const errorMsg = extractErrorMessage(err)
+      const lowerErr = errorMsg.toLowerCase()
+      if (lowerErr.includes('slot booking limit') || lowerErr.includes('maximum capacity')) {
         setBookingStatus({
           success: false,
-          message: `This slot has reached maximum capacity (2 bookings). Please choose another available time slot.`,
+          message: errorMsg || 'This slot has reached maximum capacity (2 bookings). Please choose another available time slot.',
         })
         setBookingTime('')
         setCurrentStep(3)
         fetchBookedSlots()
-      } else if (lowerErr.includes('booking limit reached') || lowerErr.includes('maximum of 2 active')) {
+      } else if (lowerErr.includes('already have an active appointment') || lowerErr.includes('already have another appointment')) {
         setBookingStatus({
           success: false,
-          message: errorDetail,
+          message: errorMsg,
+        })
+        setBookingTime('')
+        setCurrentStep(3)
+        fetchBookedSlots()
+        fetchActiveAppointmentsCount()
+      } else if (lowerErr.includes('booking limit reached') || lowerErr.includes('maximum of 2 active') || lowerErr.includes('maximum of')) {
+        setBookingStatus({
+          success: false,
+          message: errorMsg,
         })
         fetchActiveAppointmentsCount()
-      } else if (lowerErr.includes('already have an active appointment')) {
-        setBookingStatus({
-          success: false,
-          message: 'You already have an active appointment booked for this time slot.',
-        })
-        setCurrentStep(3)
       } else {
         setBookingStatus({
           success: false,
-          message: errorDetail || 'Double booking error or availability conflict.',
+          message: errorMsg || 'Booking failed due to an availability conflict.',
         })
         setCurrentStep(3)
       }
@@ -627,13 +631,26 @@ export default function PatientBookPage() {
                       }}
                       className="p-4 rounded-xl border border-slate-800 bg-slate-950 hover:border-teal-500/50 text-xs cursor-pointer transition-all hover:bg-slate-900"
                     >
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-slate-100">{doc.full_name}</h3>
-                        <span className="text-[10px] font-mono text-teal-300 px-2 py-0.5 rounded bg-teal-500/10 border border-teal-500/20">
-                          ₹{doc.consultation_fee}
-                        </span>
+                      <div className="flex items-center gap-3 mb-2">
+                        {doc.profile_image_url ? (
+                          <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-700">
+                            <img src={doc.profile_image_url.startsWith('http') ? doc.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${doc.profile_image_url}`} alt={doc.full_name} className="object-cover w-full h-full" />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded-full shrink-0 bg-slate-800 flex items-center justify-center text-slate-400 border border-slate-700">
+                            <UserCheck className="w-4 h-4" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-slate-100">{doc.full_name}</h3>
+                            <span className="text-[10px] font-mono text-teal-300 px-2 py-0.5 rounded bg-teal-500/10 border border-teal-500/20">
+                              ${doc.consultation_fee}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-teal-400 font-medium mt-0.5">{doc.specialty}</p>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-teal-400 font-medium mt-0.5">{doc.specialty}</p>
 
                       <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-slate-400">
                         <Clock className="w-3 h-3 text-teal-400 shrink-0" />
@@ -649,7 +666,16 @@ export default function PatientBookPage() {
           ) : (
             selectedDoctor && (
               <div className="text-sm font-medium text-slate-300 pl-8 flex items-center justify-between">
-                <div>
+                <div className="flex items-center gap-2">
+                  {selectedDoctor.profile_image_url ? (
+                    <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 border border-slate-700">
+                      <img 
+                        src={selectedDoctor.profile_image_url.startsWith('http') ? selectedDoctor.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${selectedDoctor.profile_image_url}`} 
+                        alt={selectedDoctor.full_name} 
+                        className="object-cover w-full h-full" 
+                      />
+                    </div>
+                  ) : null}
                   <span>{selectedDoctor.full_name}</span> <span className="text-xs text-teal-400">({selectedDoctor.specialty})</span>
                 </div>
                 <div className="text-[11px] text-slate-400">
@@ -906,10 +932,21 @@ export default function PatientBookPage() {
 
             <div className="bg-slate-950 rounded-xl p-5 border border-slate-800 space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Doctor</p>
-                  <p className="font-semibold text-slate-200">{selectedDoctor.full_name}</p>
-                  <p className="text-[10px] text-teal-400">{selectedDoctor.specialty}</p>
+                <div className="flex items-center gap-3">
+                  {selectedDoctor.profile_image_url ? (
+                    <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-700">
+                      <img 
+                        src={selectedDoctor.profile_image_url.startsWith('http') ? selectedDoctor.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${selectedDoctor.profile_image_url}`} 
+                        alt={selectedDoctor.full_name} 
+                        className="object-cover w-full h-full" 
+                      />
+                    </div>
+                  ) : null}
+                  <div>
+                    <p className="text-xs text-slate-500 mb-0.5">Doctor</p>
+                    <p className="font-semibold text-slate-200">{selectedDoctor.full_name}</p>
+                    <p className="text-[10px] text-teal-400">{selectedDoctor.specialty}</p>
+                  </div>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 mb-1">Date & Time</p>

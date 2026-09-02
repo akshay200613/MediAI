@@ -19,10 +19,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('medai_appointments', sa.Column('confirmation_email_sent', sa.Boolean(), nullable=False, server_default='false'))
-    op.add_column('medai_appointments', sa.Column('reminder_email_sent', sa.Boolean(), nullable=False, server_default='false'))
-    op.add_column('medai_appointments', sa.Column('reminder_sent_at', sa.DateTime(timezone=True), nullable=True))
-    op.create_index(op.f('ix_medai_appointments_reminder_email_sent'), 'medai_appointments', ['reminder_email_sent'], unique=False)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
+    
+    if 'medai_appointments' in tables:
+        columns = [c['name'] for c in inspector.get_columns('medai_appointments')]
+        indexes = [i['name'] for i in inspector.get_indexes('medai_appointments')]
+
+        if 'confirmation_email_sent' not in columns:
+            op.add_column('medai_appointments', sa.Column('confirmation_email_sent', sa.Boolean(), nullable=False, server_default='false'))
+        if 'reminder_email_sent' not in columns:
+            op.add_column('medai_appointments', sa.Column('reminder_email_sent', sa.Boolean(), nullable=False, server_default='false'))
+        if 'reminder_sent_at' not in columns:
+            op.add_column('medai_appointments', sa.Column('reminder_sent_at', sa.DateTime(timezone=True), nullable=True))
+        if 'ix_medai_appointments_reminder_email_sent' not in indexes:
+            op.create_index(op.f('ix_medai_appointments_reminder_email_sent'), 'medai_appointments', ['reminder_email_sent'], unique=False)
 
 
 def downgrade() -> None:

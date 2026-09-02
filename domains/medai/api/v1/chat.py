@@ -274,12 +274,24 @@ async def chat(
                     user_id=current_user.user_id,
                 ))
 
-            # Resolve Doctor ID
+            # Resolve Doctor Record
             from sqlalchemy import or_
-            doc_id = action_payload.get("doctor_id")
+            doc_id_raw = action_payload.get("doctor_id")
             doc_name = action_payload.get("doctor", "Doctor")
-            if not doc_id and action_payload.get("doctor"):
-                clean_name = action_payload["doctor"].replace("Dr.", "").replace("Dr", "").strip()
+            doctor_record = None
+
+            if doc_id_raw:
+                try:
+                    parsed_doc_uuid = uuid.UUID(str(doc_id_raw))
+                    doc_res = await session.execute(
+                        select(Doctor).where(Doctor.id == parsed_doc_uuid, Doctor.is_deleted == False)
+                    )
+                    doctor_record = doc_res.scalar_one_or_none()
+                except (ValueError, TypeError):
+                    doctor_record = None
+
+            if not doctor_record and doc_name:
+                clean_name = str(doc_name).replace("Dr.", "").replace("Dr", "").strip()
                 doc_res = await session.execute(
                     select(Doctor).where(
                         or_(
@@ -289,26 +301,62 @@ async def chat(
                         Doctor.is_deleted == False
                     )
                 )
-                doc_obj = doc_res.scalars().first()
-                if doc_obj:
-                    doc_id = str(doc_obj.id)
-                    doc_name = doc_obj.full_name
-            elif doc_id:
+                doctor_record = doc_res.scalars().first()
+
+            if not doctor_record:
+                # Fallback to any active available doctor if specific not found
                 doc_res = await session.execute(
-                    select(Doctor).where(Doctor.id == uuid.UUID(str(doc_id)), Doctor.is_deleted == False)
+                    select(Doctor).where(Doctor.is_deleted == False, Doctor.is_available == True)
                 )
-                doc_obj = doc_res.scalar_one_or_none()
-                if doc_obj:
-                    doc_name = doc_obj.full_name
+                doctor_record = doc_res.scalars().first()
+
+            if not doctor_record:
+                err_reply = "We couldn't locate the specified doctor in the active directory. Please select a specialist from our available doctors list to schedule."
+                await session_mgr.add_exchange(current_user.user_id, session_id, "Confirm booking", err_reply)
+                return DataResponse(
+                    data=ChatResponse(
+                        content=err_reply,
+                        session_id=session_id,
+                        sources=[],
+                        agent_name="scheduling",
+                        tool_calls=[],
+                    ),
+                    message="Doctor not found",
+                )
+
+            doc_name = doctor_record.full_name
+            doc_uuid = doctor_record.id
 
             appt_date = action_payload.get("date")
             appt_time = action_payload.get("time")
+
+            if not appt_date or not appt_time:
+                err_reply = "The selected date or time was missing. Please select an available appointment slot to proceed."
+                await session_mgr.add_exchange(current_user.user_id, session_id, "Confirm booking", err_reply)
+                return DataResponse(
+                    data=ChatResponse(
+                        content=err_reply,
+                        session_id=session_id,
+                        sources=[],
+                        agent_name="scheduling",
+                        tool_calls=[],
+                    ),
+                    message="Missing date or time",
+                )
+
             try:
-                scheduled_at = datetime.fromisoformat(f"{appt_date}T{appt_time}:00")
+                # Clean time format e.g. "09:00 AM" or "09:00"
+                clean_time = str(appt_time).strip()
+                if " " in clean_time:
+                    parsed_dt = datetime.strptime(f"{appt_date} {clean_time}", "%Y-%m-%d %I:%M %p")
+                    scheduled_at = parsed_dt
+                else:
+                    scheduled_at = datetime.fromisoformat(f"{appt_date}T{clean_time[:5]}:00")
+
                 appt_svc = AppointmentService(session)
                 appt = await appt_svc.create_appointment(AppointmentCreate(
                     patient_id=patient.id,
-                    doctor_id=uuid.UUID(str(doc_id)),
+                    doctor_id=doc_uuid,
                     appointment_type=action_payload.get("type", "consultation").lower(),
                     scheduled_at=scheduled_at,
                     duration_minutes=30,
@@ -339,11 +387,23 @@ async def chat(
                     message="Appointment booked successfully",
                 )
             except Exception as e:
-                err_reply = f"Could not complete booking: {str(e)}"
-                await session_mgr.add_exchange(current_user.user_id, session_id, "Confirm booking", err_reply)
+                raw_err = str(e)
+                lower_err = raw_err.lower()
+                if "slot booking limit" in lower_err or "maximum capacity" in lower_err:
+                    friendly_msg = "This time slot has reached maximum capacity (2 bookings). Please select another available time slot."
+                elif "already have an active appointment" in lower_err or "already have another appointment" in lower_err:
+                    friendly_msg = f"You already have an appointment scheduled at this time with {doc_name}. Please choose another time slot."
+                elif "booking limit reached" in lower_err or "maximum of 2 active" in lower_err:
+                    friendly_msg = "You have reached the limit of 2 active bookings. Please complete or cancel an existing appointment before scheduling a new one."
+                elif "badly formed" in lower_err or "uuid" in lower_err:
+                    friendly_msg = "We couldn't confirm this doctor's profile. Please re-select the doctor from the available directory."
+                else:
+                    friendly_msg = f"Could not complete booking: {raw_err}"
+
+                await session_mgr.add_exchange(current_user.user_id, session_id, "Confirm booking", friendly_msg)
                 return DataResponse(
                     data=ChatResponse(
-                        content=err_reply,
+                        content=friendly_msg,
                         session_id=session_id,
                         sources=[],
                         agent_name="scheduling",

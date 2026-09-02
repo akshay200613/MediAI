@@ -73,7 +73,7 @@ const SPECIALTIES = [
   'General Medicine', 'Cardiology', 'Dermatology', 'Endocrinology',
   'Gastroenterology', 'Neurology', 'Obstetrics & Gynecology', 'Oncology',
   'Ophthalmology', 'Orthopedics', 'Pediatrics', 'Psychiatry',
-  'Pulmonology', 'Radiology', 'Surgery', 'Urology', 'ENT',
+  'Pulmonology', 'Radiology', 'Surgery', 'Urology', 'ENT', 'Physiology',
 ]
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {

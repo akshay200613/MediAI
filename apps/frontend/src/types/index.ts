@@ -72,6 +72,7 @@ export interface Doctor {
   working_hours_start?: string
   working_hours_end?: string
   is_available: boolean
+  profile_image_url?: string | null
   is_deleted: boolean
   created_at: string
   updated_at: string

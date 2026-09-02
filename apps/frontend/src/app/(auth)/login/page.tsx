@@ -84,7 +84,10 @@ function AuthForm() {
   const router = useRouter()
 
   const redirectByRole = (user: any) => {
-    if (!user.is_verified) { router.push('/pending-approval'); return }
+    if (user.role === 'doctor' && !user.is_verified) {
+      router.push('/pending-approval')
+      return
+    }
     if (user.role === 'admin' || user.role === 'super_admin') router.push('/admin')
     else if (user.role === 'doctor') router.push('/doctor')
     else if (user.role === 'patient' || user.role === 'user') router.push('/patient')

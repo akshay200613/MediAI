@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, Upload } from 'lucide-react'
 import { doctorsApi } from '@/lib/api/doctors'
 import toast from 'react-hot-toast'
 
@@ -19,11 +19,13 @@ const schema = z.object({
   bio: z.string().optional(),
   available_days: z.string().optional(),
   working_hours_start: z.string().optional(),
+  working_hours_start: z.string().optional(),
   working_hours_end: z.string().optional(),
+  profile_image_url: z.string().optional(),
 })
-type FormData = z.infer<typeof schema>
+type FormData = z.infer<typeof schema> & { profileImageFile?: FileList | null }
 
-const SPECIALTIES = ['General Practice','Cardiology','Dermatology','Endocrinology','Gastroenterology','Neurology','Orthopedics','Pediatrics','Psychiatry','Radiology','Surgery','Urology']
+const SPECIALTIES = ['General Practice','Cardiology','Dermatology','Endocrinology','Gastroenterology','Neurology','Orthopedics','Pediatrics','Psychiatry','Radiology','Surgery','Urology','Physiology']
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -44,6 +46,12 @@ export default function NewDoctorPage() {
 
   const onSubmit = async (data: FormData) => {
     try {
+      if (data.profileImageFile && data.profileImageFile.length > 0) {
+        const uploadRes = await doctorsApi.uploadImage(data.profileImageFile[0])
+        data.profile_image_url = uploadRes.url
+      }
+      delete data.profileImageFile // Remove it before sending to backend
+
       await doctorsApi.create(data)
       toast.success('Doctor added successfully')
       router.push('/doctors')
@@ -79,6 +87,14 @@ export default function NewDoctorPage() {
               <input {...register('phone')} className="input-field" placeholder="+1 234 567 8900" />
             </Field>
           </div>
+          <Field label="Profile Photo (Optional)">
+            <input 
+              type="file" 
+              accept="image/*" 
+              className="input-field cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-500/10 file:text-indigo-400 hover:file:bg-indigo-500/20"
+              {...register('profileImageFile')} 
+            />
+          </Field>
         </div>
 
         <div className="glass-card p-6 space-y-4">

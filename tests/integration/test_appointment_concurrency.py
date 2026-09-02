@@ -135,6 +135,30 @@ class TestDoubleBookingPrevention:
         assert resp.status_code == 409
         assert "booking limit reached" in resp.json()["detail"].lower() or "active appointment" in resp.json()["detail"].lower()
 
+    async def test_same_patient_same_slot_returns_clear_error_409(
+        self, async_client: AsyncClient, patient_headers: dict, mock_session: AsyncMock
+    ):
+        """When the same patient tries to book the same slot twice, a 409 Conflict with clear error message is returned."""
+        pid, did = uuid.uuid4(), uuid.uuid4()
+        slot_time = datetime.now(timezone.utc)
+
+        # Patient has 1 existing appointment at this exact slot
+        existing = MagicMock(doctor_id=str(did), patient_id=str(pid), scheduled_at=slot_time)
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [existing]
+        mock_result.scalar_one_or_none.return_value = existing
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        resp = await async_client.post(
+            f"{BASE}/book",
+            json=_book_payload(pid, did, slot_time),
+            headers=patient_headers,
+        )
+
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert "already have an active appointment booked for this time slot" in detail.lower()
+
     async def test_booking_different_time_slot_same_doctor_succeeds(
         self, async_client: AsyncClient, patient_headers: dict, mock_session: AsyncMock
     ):

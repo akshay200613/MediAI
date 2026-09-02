@@ -27,15 +27,21 @@ class AppointmentRepository(BaseRepository[Appointment]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_upcoming(self, limit: int = 20) -> list[Appointment]:
+    async def get_upcoming(self, limit: int = 20, patient_id: str | None = None, doctor_id: str | None = None) -> list[Appointment]:
         now = datetime.utcnow()
+        conditions = [
+            Appointment.is_deleted == False,  # noqa: E712
+            Appointment.scheduled_at >= now,
+            Appointment.status.in_(["scheduled", "confirmed"]),
+        ]
+        if patient_id:
+            conditions.append(Appointment.patient_id == patient_id)
+        if doctor_id:
+            conditions.append(Appointment.doctor_id == doctor_id)
+
         stmt = (
             select(Appointment)
-            .where(
-                Appointment.is_deleted == False,  # noqa: E712
-                Appointment.scheduled_at >= now,
-                Appointment.status.in_(["scheduled", "confirmed"]),
-            )
+            .where(and_(*conditions))
             .order_by(Appointment.scheduled_at.asc())
             .limit(limit)
         )

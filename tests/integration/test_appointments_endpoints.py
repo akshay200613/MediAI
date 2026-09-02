@@ -85,9 +85,9 @@ class TestListAppointments:
 
 class TestGetAppointment:
     async def test_get_existing_appointment(
-        self, async_client: AsyncClient, doctor_headers: dict
+        self, async_client: AsyncClient, doctor_headers: dict, doctor_user_id: str
     ):
-        appt = _appt_out()
+        appt = _appt_out(doctor_id=uuid.UUID(doctor_user_id))
         with patch(
             "domains.medai.services.appointment_service.AppointmentService.get_appointment",
             new=AsyncMock(return_value=appt),

@@ -11,6 +11,8 @@ from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+import os
 
 from core.config.settings import settings
 from core.config.logging import configure_logging, get_logger
@@ -227,6 +229,10 @@ def create_app() -> FastAPI:
 
     # ── Domain Registration ───────────────────────────────────────────────────
     register_medai(app)
+    
+    # ── Static Files ──────────────────────────────────────────────────────────
+    os.makedirs("uploads", exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
     # ── Prometheus Metrics ────────────────────────────────────────────────────
     # Instrument AFTER all routers are registered so all routes are captured.

@@ -18,7 +18,8 @@ class AppointmentService:
     async def create_appointment(self, data: AppointmentCreate) -> AppointmentOut:
         import inspect
         import uuid
-        from sqlalchemy import select
+        from datetime import timezone
+        from sqlalchemy import select, or_
         from domains.medai.models.appointment import Appointment, AppointmentStatus
         from domains.medai.models.doctor import Doctor
         from core.config.constants import MAX_BOOKINGS_PER_SLOT, MAX_ACTIVE_APPOINTMENTS_PER_PATIENT
@@ -30,6 +31,13 @@ class AppointmentService:
             AppointmentStatus.CONFIRMED,
             AppointmentStatus.IN_PROGRESS,
         ]
+
+        def to_utc(dt):
+            if dt is None:
+                return None
+            if getattr(dt, "tzinfo", None) is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
 
         def _extract_records(res) -> list:
             if res is None:
@@ -69,40 +77,56 @@ class AppointmentService:
                     clean.append(it)
             return clean
 
-        # 1. Per-Person Booking Limit Check (Max 2 active appointments per patient)
-        max_pat_limit = getattr(settings, "max_active_appointments_per_patient", MAX_ACTIVE_APPOINTMENTS_PER_PATIENT)
+        target_pat_uuid = uuid.UUID(str(data.patient_id)) if isinstance(data.patient_id, (str, uuid.UUID)) else data.patient_id
+        target_doc_uuid = uuid.UUID(str(data.doctor_id)) if isinstance(data.doctor_id, (str, uuid.UUID)) else data.doctor_id
+        target_time_utc = to_utc(data.scheduled_at)
+
+        # 1. Fetch all active appointments for this patient
         pat_query = select(Appointment).where(
-            Appointment.patient_id == str(data.patient_id),
+            or_(
+                Appointment.patient_id == target_pat_uuid,
+                Appointment.patient_id == str(data.patient_id),
+            ),
             Appointment.status.in_(active_statuses),
             Appointment.is_deleted == False,
         )
         pat_res = await self.session.execute(pat_query)
         pat_appts = _extract_records(pat_res)
 
+        # 2. Duplicate Slot Check: Ensure patient hasn't already booked this exact slot or an overlapping slot
+        for appt_item in pat_appts:
+            item_time_utc = to_utc(getattr(appt_item, "scheduled_at", None))
+            if item_time_utc and target_time_utc and item_time_utc == target_time_utc:
+                item_doc_id = str(getattr(appt_item, "doctor_id", ""))
+                if item_doc_id == str(target_doc_uuid) or item_doc_id == str(data.doctor_id):
+                    raise ValueError("You already have an active appointment booked for this time slot.")
+                else:
+                    raise ValueError("You already have another appointment scheduled at this exact time slot.")
+
+        # 3. Per-Person Booking Limit Check (Max 2 active appointments per patient)
+        max_pat_limit = getattr(settings, "max_active_appointments_per_patient", MAX_ACTIVE_APPOINTMENTS_PER_PATIENT)
         if len(pat_appts) >= max_pat_limit:
             raise ValueError(
                 f"Booking limit reached: Patient already has {len(pat_appts)} active appointment(s). "
                 f"A maximum of {max_pat_limit} active appointments is allowed per patient."
             )
 
-        # 2. Duplicate Slot Check: Ensure this patient has not already booked this exact slot
-        for appt_item in pat_appts:
-            if (
-                str(getattr(appt_item, "doctor_id", "")) == str(data.doctor_id)
-                and getattr(appt_item, "scheduled_at", None) == data.scheduled_at
-            ):
-                raise ValueError("You already have an active appointment booked for this time slot.")
-
-        # 3. Per-Slot Booking Limit Check (Max 2 bookings per time slot)
+        # 4. Per-Slot Booking Limit Check (Max 2 bookings per doctor per time slot)
         max_slot_limit = getattr(settings, "max_bookings_per_slot", MAX_BOOKINGS_PER_SLOT)
         slot_query = select(Appointment).where(
-            Appointment.doctor_id == str(data.doctor_id),
-            Appointment.scheduled_at == data.scheduled_at,
+            or_(
+                Appointment.doctor_id == target_doc_uuid,
+                Appointment.doctor_id == str(data.doctor_id),
+            ),
             Appointment.status.in_(active_statuses),
             Appointment.is_deleted == False,
         )
         slot_res = await self.session.execute(slot_query)
-        slot_appts = _extract_records(slot_res)
+        all_doc_appts = _extract_records(slot_res)
+        slot_appts = [
+            a for a in all_doc_appts
+            if to_utc(getattr(a, "scheduled_at", None)) == target_time_utc
+        ]
 
         if len(slot_appts) >= max_slot_limit:
             appointment_bookings_total.labels(outcome="conflict").inc()
@@ -369,9 +393,9 @@ class AppointmentService:
             logger.warning(f"WebSocket notification failed: {e}")
         return out
 
-    async def get_upcoming(self) -> list[AppointmentOut]:
+    async def get_upcoming(self, limit: int = 20, patient_id: str | None = None, doctor_id: str | None = None) -> list[AppointmentOut]:
         await self.mark_past_uncompleted_appointments()
-        appts = await self.repo.get_upcoming()
+        appts = await self.repo.get_upcoming(limit=limit, patient_id=patient_id, doctor_id=doctor_id)
         return [self._to_out(a) for a in appts]
 
     async def get_by_patient(self, patient_id: str) -> list[AppointmentOut]:

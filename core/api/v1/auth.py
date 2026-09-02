@@ -34,7 +34,8 @@ async def login(
     session: AsyncSession = Depends(get_db),
 ) -> DataResponse[TokenResponse]:
     repo = UserRepository(session)
-    user = await repo.get_by_field("email", credentials.email)
+    normalized_email = credentials.email.lower().strip()
+    user = await repo.get_by_field("email", normalized_email)
 
     if not user:
         auth_login_total.labels(outcome="unknown_user").inc()
@@ -103,32 +104,34 @@ async def register(
     session: AsyncSession = Depends(get_db),
 ) -> DataResponse[dict]:
     repo = UserRepository(session)
+    normalized_email = data.email.lower().strip()
 
-    if await repo.exists("email", data.email):
+    if await repo.exists("email", normalized_email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
 
     user = await repo.create({
-        "email": data.email,
+        "email": normalized_email,
         "hashed_password": hash_password(data.password),
-        "full_name": data.full_name,
+        "full_name": data.full_name.strip(),
         "role": "patient",
         "domain": "platform",
+        "is_verified": True,
     })
 
     # Auto-create Patient profile record
     from domains.medai.models.patient import Patient
-    names = data.full_name.split(" ", 1)
+    names = data.full_name.strip().split(" ", 1)
     first_name = names[0]
     last_name = names[1] if len(names) > 1 else ""
     pat = Patient(
         first_name=first_name,
         last_name=last_name,
-        email=data.email,
+        email=normalized_email,
         phone="000-000-0000",
-        user_id=str(user.id),
+        user_id=user.id,
     )
     session.add(pat)
 
@@ -143,7 +146,7 @@ async def register(
             action="USER_REGISTER",
             resource_type="User",
             resource_id=str(user.id),
-            details={"email": data.email, "full_name": data.full_name},
+            details={"email": normalized_email, "full_name": data.full_name},
         )
     except Exception:
         pass
@@ -457,7 +460,7 @@ async def register_doctor(
 
     # Create the Doctor profile record
     doc = Doctor(
-        user_id=str(user.id),
+        user_id=user.id,
         first_name=first_name,
         last_name=last_name,
         email=email,

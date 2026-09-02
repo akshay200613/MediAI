@@ -7,6 +7,7 @@ from domains.medai.api.v1.chat import router as chat_router
 from domains.medai.api.v1.rag import router as rag_router
 from domains.medai.api.v1.admin import router as admin_router
 from domains.medai.api.v1.doctor_dashboard import router as doctor_dashboard_router
+from domains.medai.api.v1.uploads import router as uploads_router
 from domains.medai.websockets.router import router as ws_router
 from core.config.constants import API_V1_PREFIX
 
@@ -18,6 +19,7 @@ medai_v1_router.include_router(chat_router, prefix="/chat", tags=["AI Chat"])
 medai_v1_router.include_router(rag_router, prefix="/rag", tags=["RAG Knowledge Base"])
 medai_v1_router.include_router(admin_router, prefix="/admin", tags=["Admin System"])
 medai_v1_router.include_router(doctor_dashboard_router, prefix="/doctor-dashboard", tags=["Doctor Dashboard"])
+medai_v1_router.include_router(uploads_router, prefix="/uploads", tags=["Uploads"])
 medai_v1_router.include_router(ws_router, tags=["WebSockets"])
 
 

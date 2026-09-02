@@ -1,7 +1,7 @@
 'use client'
 
-import React from 'react'
-import { Calendar, Clock, User, CheckCircle, Activity, Info, XCircle } from 'lucide-react'
+import React, { useState } from 'react'
+import { Calendar, Clock, User, CheckCircle, Activity, Info, XCircle, Loader2 } from 'lucide-react'
 
 interface ActionCardsProps {
   actionData: any
@@ -9,6 +9,9 @@ interface ActionCardsProps {
 }
 
 export const ActionCards: React.FC<ActionCardsProps> = ({ actionData, onAction }) => {
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
+  const [confirmationStatus, setConfirmationStatus] = useState<'idle' | 'confirming' | 'confirmed' | 'cancelled' | 'changing'>('idle')
+
   if (!actionData || !actionData.action) return null
 
   switch (actionData.action) {
@@ -23,22 +26,36 @@ export const ActionCards: React.FC<ActionCardsProps> = ({ actionData, onAction }
             <span className="font-medium text-slate-200">{actionData.doctor}</span> - {actionData.date}
           </div>
           <div className="flex flex-wrap gap-2">
-            {actionData.slots?.map((slot: string) => (
-              <button
-                key={slot}
-                onClick={() => onAction(JSON.stringify({
-                  __action: 'select_slot',
-                  doctor: actionData.doctor,
-                  doctor_id: actionData.doctor_id,
-                  specialty: actionData.specialty || 'General Practice',
-                  date: actionData.date,
-                  selected_slot: slot,
-                }))}
-                className="px-3 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 text-xs border border-teal-500/30 transition-colors"
-              >
-                {slot}
-              </button>
-            ))}
+            {actionData.slots?.map((slot: string) => {
+              const isChosen = selectedSlot === slot
+              const isOther = selectedSlot !== null && !isChosen
+              return (
+                <button
+                  key={slot}
+                  disabled={selectedSlot !== null}
+                  onClick={() => {
+                    setSelectedSlot(slot)
+                    onAction(JSON.stringify({
+                      __action: 'select_slot',
+                      doctor: actionData.doctor,
+                      doctor_id: actionData.doctor_id,
+                      specialty: actionData.specialty || 'General Practice',
+                      date: actionData.date,
+                      selected_slot: slot,
+                    }))
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                    isChosen
+                      ? 'bg-teal-600 text-white border-teal-500 shadow-md pointer-events-none'
+                      : isOther
+                      ? 'opacity-30 bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
+                      : 'bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border-teal-500/30'
+                  }`}
+                >
+                  {slot}
+                </button>
+              )
+            })}
           </div>
           {(!actionData.slots || actionData.slots.length === 0) && (
             <div className="text-xs text-rose-400 mt-2">No slots available on this date.</div>
@@ -47,12 +64,31 @@ export const ActionCards: React.FC<ActionCardsProps> = ({ actionData, onAction }
       )
 
     case 'booking_confirmation':
+      const isHandled = confirmationStatus !== 'idle'
+
       return (
-        <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-4 mt-2 max-w-sm">
-          <div className="flex items-center gap-2 mb-3 text-amber-400">
-            <Info className="w-4 h-4" />
-            <h4 className="font-semibold text-sm">Confirm Booking</h4>
+        <div className={`border rounded-xl p-4 mt-2 max-w-sm transition-all ${
+          isHandled
+            ? 'bg-slate-900/90 border-slate-800 opacity-75'
+            : 'bg-slate-800/80 border-slate-700'
+        }`}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 text-amber-400">
+              <Info className="w-4 h-4" />
+              <h4 className="font-semibold text-sm">Confirm Booking</h4>
+            </div>
+            {confirmationStatus === 'confirmed' && (
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                ✓ Submitted
+              </span>
+            )}
+            {confirmationStatus === 'cancelled' && (
+              <span className="text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full font-bold">
+                Cancelled
+              </span>
+            )}
           </div>
+
           <div className="space-y-2 text-xs text-slate-300 mb-4 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
             <div className="flex justify-between">
               <span className="text-slate-400">Doctor</span>
@@ -71,37 +107,63 @@ export const ActionCards: React.FC<ActionCardsProps> = ({ actionData, onAction }
               <span className="font-medium text-slate-200">{actionData.type}</span>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => onAction(JSON.stringify({
-                __action: 'confirm_booking',
-                doctor: actionData.doctor,
-                doctor_id: actionData.doctor_id,
-                specialty: actionData.specialty,
-                date: actionData.date,
-                time: actionData.time,
-                type: actionData.type,
-                reason: actionData.reason,
-              }))}
-              className="px-3 py-2 rounded-lg bg-teal-500 hover:bg-teal-600 text-white font-medium text-xs transition-colors flex justify-center items-center gap-1"
-            >
-              <CheckCircle className="w-3.5 h-3.5" /> Confirm
-            </button>
-            <button
-              onClick={() => onAction(JSON.stringify({
-                __action: 'cancel_booking_flow'
-              }))}
-              className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-xs transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => onAction("Can we check another available date or time?")}
-              className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-xs transition-colors col-span-2"
-            >
-              Change Time
-            </button>
-          </div>
+
+          {isHandled ? (
+            <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-center text-xs text-slate-400 font-medium">
+              {confirmationStatus === 'confirming' || confirmationStatus === 'confirmed' ? (
+                <div className="flex items-center justify-center gap-2 text-teal-300">
+                  <CheckCircle className="w-4 h-4 text-teal-400" />
+                  <span>Booking confirmed. Processing in progress...</span>
+                </div>
+              ) : (
+                <span>Option completed.</span>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmationStatus('confirmed')
+                  onAction(JSON.stringify({
+                    __action: 'confirm_booking',
+                    doctor: actionData.doctor,
+                    doctor_id: actionData.doctor_id,
+                    specialty: actionData.specialty,
+                    date: actionData.date,
+                    time: actionData.time,
+                    type: actionData.type,
+                    reason: actionData.reason,
+                  }))
+                }}
+                className="px-3 py-2 rounded-lg bg-teal-500 hover:bg-teal-600 text-white font-medium text-xs transition-colors flex justify-center items-center gap-1 cursor-pointer shadow-md"
+              >
+                <CheckCircle className="w-3.5 h-3.5" /> Confirm
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmationStatus('cancelled')
+                  onAction(JSON.stringify({
+                    __action: 'cancel_booking_flow'
+                  }))
+                }}
+                className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmationStatus('changing')
+                  onAction("Can we check another available date or time?")
+                }}
+                className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-xs transition-colors col-span-2 cursor-pointer"
+              >
+                Change Time
+              </button>
+            </div>
+          )}
         </div>
       )
 

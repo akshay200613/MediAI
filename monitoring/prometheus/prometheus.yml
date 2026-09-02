@@ -7,7 +7,7 @@ global:
   scrape_timeout: 10s
 
   external_labels:
-    environment: 'development'
+    environment: 'production'
     project: 'medai'
 
 # ── Alerting ──────────────────────────────────────────────────────────────────
@@ -23,17 +23,14 @@ global:
 # ── Scrape Configs ────────────────────────────────────────────────────────────
 scrape_configs:
 
-  # MedAI FastAPI backend
+  # MedAI FastAPI backend (containerized service and host dev fallback)
   - job_name: 'medai_api'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['host.docker.internal:8000']
+      - targets: ['api:8000', 'host.docker.internal:8000']
         labels:
           service: 'medai-api'
-          environment: 'development'
-    # If running API in Docker as a service, use the service name instead:
-    # static_configs:
-    #   - targets: ['api:8000']
+          environment: 'production'
 
   # Prometheus self-monitoring
   - job_name: 'prometheus'

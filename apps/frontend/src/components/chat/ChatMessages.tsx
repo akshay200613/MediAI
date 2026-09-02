@@ -111,6 +111,61 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
     })
   }
 
+  // Helper to format any arbitrary JSON object/array into clean, human-readable text
+  const formatJsonToReadableText = (obj: any): string => {
+    if (obj === null || obj === undefined) return ''
+    if (typeof obj === 'string') {
+      const trimmed = obj.trim()
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        try {
+          const parsed = JSON.parse(trimmed)
+          return formatJsonToReadableText(parsed)
+        } catch {
+          return obj
+        }
+      }
+      return obj
+    }
+    if (typeof obj === 'number' || typeof obj === 'boolean') {
+      return String(obj)
+    }
+    if (Array.isArray(obj)) {
+      return obj
+        .map((item) => {
+          if (typeof item === 'object' && item !== null) {
+            return `• ${formatJsonToReadableText(item).replace(/\n/g, ' ')}`
+          }
+          return `• ${item}`
+        })
+        .join('\n')
+    }
+    if (typeof obj === 'object') {
+      // If object has a primary text/response field, return it directly
+      const primaryKeys = ['response', 'message', 'answer', 'reply', 'content', 'text', 'summary', 'details']
+      for (const pk of primaryKeys) {
+        if (obj[pk] && typeof obj[pk] === 'string' && obj[pk].trim().length > 0) {
+          return obj[pk].trim()
+        }
+      }
+
+      // Format key-values into clean bulleted text
+      const lines: string[] = []
+      for (const [k, v] of Object.entries(obj)) {
+        if (k.startsWith('__') || k === 'action' || v === null || v === undefined) continue
+        const formattedKey = k
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+        if (typeof v === 'object') {
+          lines.push(`**${formattedKey}:**\n${formatJsonToReadableText(v)}`)
+        } else {
+          lines.push(`**${formattedKey}:** ${v}`)
+        }
+      }
+      return lines.join('\n\n')
+    }
+    return String(obj)
+  }
+
   // Robust JSON stripper and Action Card extractor
   const parseContentAndAction = (content: string, isUser: boolean) => {
     if (!content) return { text: '', actionData: null }
@@ -123,21 +178,26 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
           const payload = JSON.parse(trimmed)
           if (payload.__action === 'select_slot') {
             return {
-              text: `Selected ${payload.selected_slot} on ${payload.date}`,
+              text: `Selected slot ${payload.selected_slot} on ${payload.date} with ${payload.doctor || 'doctor'}.`,
               actionData: null,
             }
           }
           if (payload.__action === 'confirm_booking') {
             return {
-              text: `Confirmed booking with ${payload.doctor || 'doctor'} on ${payload.date} at ${payload.time}.`,
+              text: `Confirmed appointment with ${payload.doctor || 'doctor'} on ${payload.date} at ${payload.time}.`,
               actionData: null,
             }
           }
           if (payload.__action === 'cancel_booking_flow') {
             return {
-              text: `Cancelled booking.`,
+              text: `Cancelled booking flow.`,
               actionData: null,
             }
+          }
+          // Fallback user JSON format
+          return {
+            text: formatJsonToReadableText(payload),
+            actionData: null,
           }
         }
       } catch {}
@@ -150,35 +210,52 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
 
     // Match markdown codeblocks with ```json ... ``` or ``` ... ```
     const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi
-    let match
-    while ((match = codeBlockRegex.exec(content)) !== null) {
-      const rawInner = match[1].trim()
-      if (rawInner.startsWith('{') && rawInner.endsWith('}')) {
+    cleaned = cleaned.replace(codeBlockRegex, (fullMatch, rawInner) => {
+      const trimmed = (rawInner || '').trim()
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
         try {
-          const parsed = JSON.parse(rawInner)
-          if (parsed.action) {
+          const parsed = JSON.parse(trimmed)
+          if (parsed && typeof parsed === 'object' && parsed.action) {
             actionData = parsed
-            cleaned = cleaned.replace(match[0], '').trim()
+            return '' // Remove action JSON block from rendered text
           }
-        } catch {}
+          // For non-action JSON blocks, convert to clean readable text
+          return formatJsonToReadableText(parsed)
+        } catch {
+          return fullMatch
+        }
       }
-    }
+      return fullMatch
+    }).trim()
 
-    // If no codeblock matched, check for standalone JSON object
+    // If whole content or substring is a standalone JSON object
     if (!actionData) {
-      const rawJsonMatch = cleaned.match(/(\{[\s\r\n]*"action"[\s\S]*?\})/i)
-      if (rawJsonMatch) {
+      const trimmedCleaned = cleaned.trim()
+      if ((trimmedCleaned.startsWith('{') && trimmedCleaned.endsWith('}')) || (trimmedCleaned.startsWith('[') && trimmedCleaned.endsWith(']'))) {
         try {
-          const parsed = JSON.parse(rawJsonMatch[1])
-          if (parsed.action) {
+          const parsed = JSON.parse(trimmedCleaned)
+          if (parsed && typeof parsed === 'object' && parsed.action) {
             actionData = parsed
-            cleaned = cleaned.replace(rawJsonMatch[0], '').trim()
+            cleaned = ''
+          } else {
+            cleaned = formatJsonToReadableText(parsed)
           }
         } catch {}
+      } else {
+        const rawJsonMatch = cleaned.match(/(\{[\s\r\n]*"action"[\s\S]*?\})/i)
+        if (rawJsonMatch) {
+          try {
+            const parsed = JSON.parse(rawJsonMatch[1])
+            if (parsed && parsed.action) {
+              actionData = parsed
+              cleaned = cleaned.replace(rawJsonMatch[0], '').trim()
+            }
+          } catch {}
+        }
       }
     }
 
-    // Ensure any leftover backtick blocks like ```json or ``` are stripped
+    // Ensure any leftover backtick blocks like ```json or ``` are cleanly stripped
     cleaned = cleaned.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim()
 
     return { text: cleaned, actionData }
@@ -237,15 +314,12 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
                       : ''
                   }`}
                 >
-                  {/* Active Retrieval Status Banner */}
-                  {!isUser && msg.retrievalStatus && msg.retrievalStatus !== 'done' && (
-                    <div className="mb-3 p-2 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-xs text-teal-300 font-mono">
-                      <Search className="w-3.5 h-3.5 text-teal-400 animate-spin" />
-                      <span>
-                        {msg.retrievalStatus === 'searching'
-                          ? 'Searching Knowledge Base...'
-                          : 'Processing query...'}
-                      </span>
+                  {/* Typing / streaming indicator if content is still loading */}
+                  {!isUser && msg.isStreaming && !msg.content && (
+                    <div className="flex items-center gap-1.5 py-1">
+                      <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 rounded-full bg-teal-400 animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
                   )}
 

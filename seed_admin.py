@@ -73,6 +73,8 @@ async def seed_accounts():
         else:
             doc_user.role = "doctor"
             doc_user.is_verified = True
+            doc_user.hashed_password = hash_password("Doctor123!")
+            print("✅ Reset Doctor Account password: doctor@gmail.com / Doctor123!")
 
         # 3. Patient Account
         pat_res = await session.execute(select(User).where(User.email == "patient@gmail.com"))
@@ -103,6 +105,8 @@ async def seed_accounts():
         else:
             pat_user.role = "patient"
             pat_user.is_verified = True
+            pat_user.hashed_password = hash_password("Patient123!")
+            print("✅ Reset Patient Account password: patient@gmail.com / Patient123!")
 
         await session.commit()
         print("🚀 Seeding completed successfully!")

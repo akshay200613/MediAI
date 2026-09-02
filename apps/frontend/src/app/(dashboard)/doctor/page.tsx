@@ -41,6 +41,7 @@ interface DashboardData {
   appointments: TodayAppointment[]
   doctor_name: string
   doctor_specialty: string
+  profile_image_url?: string
 }
 
 const statusConfig: Record<string, { label: string; cls: string }> = {
@@ -174,10 +175,20 @@ export default function DoctorDashboardPage() {
         className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5"
       >
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
-              <Stethoscope className="w-4 h-4 text-indigo-400" />
-            </div>
+          <div className="flex items-center gap-3 mb-2">
+            {data?.profile_image_url ? (
+              <div className="w-10 h-10 rounded-xl overflow-hidden relative border border-indigo-500/30">
+                <img 
+                  src={data.profile_image_url.startsWith('http') ? data.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${data.profile_image_url}`} 
+                  alt={doctorName} 
+                  className="object-cover w-full h-full" 
+                />
+              </div>
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
+                <Stethoscope className="w-5 h-5 text-indigo-400" />
+              </div>
+            )}
             <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wide">{specialty || 'Physician'}</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-100">

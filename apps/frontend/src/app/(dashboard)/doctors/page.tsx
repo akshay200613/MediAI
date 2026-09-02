@@ -65,9 +65,15 @@ export default function DoctorsPage() {
             <Link key={d.id} href={`/doctors/${d.id}`}>
               <div className="glass-card p-5 hover:border-primary-500/20 hover:shadow-glow hover:scale-[1.01] transition-all duration-200 cursor-pointer group">
                 <div className="flex items-start gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-accent-500 to-primary-500 text-sm font-bold text-white flex-shrink-0">
-                    {getInitials(d.full_name)}
-                  </div>
+                  {d.profile_image_url ? (
+                    <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden relative border border-white/10">
+                      <img src={d.profile_image_url.startsWith('http') ? d.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${d.profile_image_url}`} alt={d.full_name} className="object-cover w-full h-full" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-accent-500 to-primary-500 text-sm font-bold text-white flex-shrink-0">
+                      {getInitials(d.full_name)}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-white truncate">{d.full_name}</p>
                     <p className="text-accent-400 text-sm">{d.specialty}</p>

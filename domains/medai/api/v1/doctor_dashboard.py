@@ -95,6 +95,7 @@ async def get_today_appointments(
             "appointments": appointment_list,
             "doctor_name": doctor.full_name,
             "doctor_specialty": doctor.specialty,
+            "profile_image_url": doctor.profile_image_url,
         },
         message="Today's appointments retrieved",
     )

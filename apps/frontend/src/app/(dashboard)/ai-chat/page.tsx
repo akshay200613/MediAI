@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { ArrowLeft } from 'lucide-react'
 import { useChatStore } from '@/lib/hooks/useChatStore'
 import { useAuth } from '@/lib/auth/context'
 import { ChatSidebar } from '@/components/chat/ChatSidebar'
@@ -12,6 +13,7 @@ import { ChatEmptyState } from '@/components/chat/ChatEmptyState'
 import { pageTransition } from '@/lib/motion'
 
 export default function AIChatPage() {
+  const router = useRouter()
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const collectProfile = searchParams.get('collect_profile') === 'true'
@@ -126,6 +128,34 @@ export default function AIChatPage() {
 
       {/* ── Main Chat Column ────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative bg-slate-950">
+        {/* Top Header with Back Button */}
+        <div className="px-4 py-3 border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-sm flex items-center justify-between z-10 shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700/80 flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+              title="Go back"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+              <h2 className="text-xs sm:text-sm font-bold text-slate-100 truncate max-w-[200px] sm:max-w-md">
+                {activeSession?.title || 'AI Medical Assistant'}
+              </h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => useChatStore.getState().createSession()}
+            className="text-xs text-teal-400 hover:text-teal-300 font-medium px-2.5 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            + New Consultation
+          </button>
+        </div>
+
         {/* Messages Thread or Welcoming Empty State */}
         <div className="flex-1 overflow-y-auto flex flex-col relative">
           {messages.length === 0 ? (

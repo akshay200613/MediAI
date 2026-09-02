@@ -29,6 +29,7 @@ class Doctor(AuditableModel):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    profile_image_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Professional
     specialty: Mapped[str] = mapped_column(String(100), nullable=False)

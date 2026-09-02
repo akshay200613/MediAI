@@ -25,7 +25,15 @@ import {
   EyeOff
 } from 'lucide-react'
 import apiClient from '@/lib/api/client'
+import { doctorsApi } from '@/lib/api/doctors'
 import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
+
+const SPECIALTIES = [
+  'General Practice', 'General Medicine', 'Cardiology', 'Dermatology', 'Endocrinology',
+  'Gastroenterology', 'Neurology', 'Obstetrics & Gynecology', 'Oncology',
+  'Ophthalmology', 'Orthopedics', 'Pediatrics', 'Psychiatry',
+  'Pulmonology', 'Radiology', 'Surgery', 'Urology', 'ENT', 'Physiology',
+]
 
 export default function AdminDoctorsPage() {
   const [doctors, setDoctors] = useState<any[]>([])
@@ -123,6 +131,17 @@ export default function AdminDoctorsPage() {
     setSubmitting(true)
     const formData = new FormData(e.currentTarget)
     
+    let profileImageUrl: string | undefined = undefined
+    const photoFile = formData.get('photo_file') as File | null
+    if (photoFile && photoFile.size > 0) {
+      try {
+        const uploadRes = await doctorsApi.uploadImage(photoFile)
+        profileImageUrl = uploadRes.url
+      } catch (uploadErr) {
+        console.error('Photo upload failed:', uploadErr)
+      }
+    }
+
     const payload = {
       first_name: formData.get('first_name'),
       last_name: formData.get('last_name'),
@@ -135,7 +154,8 @@ export default function AdminDoctorsPage() {
       available_days: formData.get('available_days') || 'Mon,Tue,Wed,Thu,Fri',
       working_hours_start: formData.get('working_hours_start') || '09:00',
       working_hours_end: formData.get('working_hours_end') || '17:00',
-      bio: formData.get('bio') || ''
+      bio: formData.get('bio') || '',
+      profile_image_url: profileImageUrl,
     }
 
     try {
@@ -156,7 +176,18 @@ export default function AdminDoctorsPage() {
     setSubmitting(true)
     const formData = new FormData(e.currentTarget)
 
-    const payload = {
+    let profileImageUrl: string | undefined = undefined
+    const photoFile = formData.get('photo_file') as File | null
+    if (photoFile && photoFile.size > 0) {
+      try {
+        const uploadRes = await doctorsApi.uploadImage(photoFile)
+        profileImageUrl = uploadRes.url
+      } catch (uploadErr) {
+        console.error('Photo upload failed:', uploadErr)
+      }
+    }
+
+    const payload: any = {
       first_name: formData.get('first_name'),
       last_name: formData.get('last_name'),
       phone: formData.get('phone'),
@@ -167,7 +198,10 @@ export default function AdminDoctorsPage() {
       working_hours_start: formData.get('working_hours_start'),
       working_hours_end: formData.get('working_hours_end'),
       is_available: formData.get('is_available') === 'true',
-      bio: formData.get('bio')
+      bio: formData.get('bio'),
+    }
+    if (profileImageUrl) {
+      payload.profile_image_url = profileImageUrl
     }
 
     try {
@@ -301,7 +335,22 @@ export default function AdminDoctorsPage() {
             ) : (
               filtered.map((doc) => (
                 <tr key={doc.id} className="hover:bg-slate-800/40 transition-colors">
-                  <td className="p-3.5 font-semibold text-slate-100">{doc.full_name}</td>
+                  <td className="p-3.5 font-semibold text-slate-100 flex items-center gap-3">
+                    {doc.profile_image_url ? (
+                      <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-slate-700">
+                        <img 
+                          src={doc.profile_image_url.startsWith('http') ? doc.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${doc.profile_image_url}`} 
+                          alt={doc.full_name} 
+                          className="object-cover w-full h-full" 
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 shrink-0 border border-slate-700">
+                        <Stethoscope className="w-4 h-4" />
+                      </div>
+                    )}
+                    <span>{doc.full_name}</span>
+                  </td>
                   <td className="p-3.5">
                     <p className="text-slate-200">{doc.email}</p>
                     <p className="text-[10px] text-slate-500">{doc.phone}</p>
@@ -442,9 +491,19 @@ export default function AdminDoctorsPage() {
               </button>
 
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 shrink-0">
-                  <Stethoscope className="w-6 h-6" />
-                </div>
+                {selectedDoctor.profile_image_url ? (
+                  <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-teal-500/30">
+                    <img 
+                      src={selectedDoctor.profile_image_url.startsWith('http') ? selectedDoctor.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${selectedDoctor.profile_image_url}`} 
+                      alt={selectedDoctor.full_name} 
+                      className="object-cover w-full h-full" 
+                    />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 shrink-0">
+                    <Stethoscope className="w-6 h-6" />
+                  </div>
+                )}
                 <div>
                   <h3 className="text-lg font-bold text-slate-100">{selectedDoctor.full_name}</h3>
                   <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-500/10 text-teal-300 border border-teal-500/20 mt-1">
@@ -573,7 +632,10 @@ export default function AdminDoctorsPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-slate-300 text-xs font-medium">Specialty</label>
-                    <input required name="specialty" type="text" defaultValue={editingDoctor.specialty} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-500/50" />
+                    <input required name="specialty" list="admin-specialties" type="text" defaultValue={editingDoctor.specialty} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-500/50" />
+                    <datalist id="admin-specialties">
+                      {SPECIALTIES.map(s => <option key={s} value={s} />)}
+                    </datalist>
                   </div>
                 </div>
 
@@ -613,6 +675,11 @@ export default function AdminDoctorsPage() {
                 <div className="space-y-1.5">
                   <label className="text-slate-300 text-xs font-medium">Bio</label>
                   <textarea name="bio" rows={3} defaultValue={editingDoctor.bio || ''} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-500/50 text-xs"></textarea>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-300 text-xs font-medium">Profile Photo (Optional)</label>
+                  <input name="photo_file" type="file" accept="image/*" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-teal-500/20 file:text-teal-300 hover:file:bg-teal-500/30" />
                 </div>
 
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-center gap-2">
@@ -688,7 +755,7 @@ export default function AdminDoctorsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-slate-300 text-xs font-medium">Specialty</label>
-                    <input required name="specialty" type="text" placeholder="e.g. Cardiology" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-500/50" />
+                    <input required name="specialty" list="admin-specialties" type="text" placeholder="e.g. Physiology" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-500/50" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-slate-300 text-xs font-medium">License Number</label>
@@ -725,6 +792,11 @@ export default function AdminDoctorsPage() {
                 <div className="space-y-1.5">
                   <label className="text-slate-300 text-xs font-medium">Bio (Optional)</label>
                   <textarea name="bio" rows={3} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-500/50 text-xs"></textarea>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-300 text-xs font-medium">Profile Photo (Optional)</label>
+                  <input name="photo_file" type="file" accept="image/*" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-teal-500/20 file:text-teal-300 hover:file:bg-teal-500/30" />
                 </div>
 
                 <div className="pt-4 flex justify-end gap-3 border-t border-slate-800">

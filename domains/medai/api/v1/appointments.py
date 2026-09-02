@@ -60,12 +60,16 @@ async def book_appointment(
     except ValueError as val_err:
         err_msg = str(val_err)
         is_conflict = any(
-            k in err_msg
+            k in err_msg.lower()
             for k in [
-                "Double booking",
-                "Slot booking limit",
-                "Booking limit",
+                "double booking",
+                "slot booking limit",
+                "booking limit",
                 "already have an active appointment",
+                "already have another appointment",
+                "maximum of 2 active",
+                "maximum of",
+                "conflict",
             ]
         )
         status_code = status.HTTP_409_CONFLICT if is_conflict else status.HTTP_400_BAD_REQUEST
@@ -154,9 +158,7 @@ async def list_appointments(
             )
 
     if upcoming_only:
-        appts = await svc.get_upcoming()
-        if effective_patient_id:
-            appts = [a for a in appts if str(a.patient_id) == effective_patient_id]
+        appts = await svc.get_upcoming(doctor_id=None, patient_id=effective_patient_id)
         return PaginatedResponse(data=appts, total=len(appts), page=1, page_size=max(len(appts), effective_page_size), total_pages=1)
     if effective_patient_id:
         appts = await svc.get_by_patient(effective_patient_id)
@@ -170,15 +172,16 @@ async def get_booked_slots(
     date: str = Query(..., description="YYYY-MM-DD start date"),
     end_date: str | None = Query(None, description="Optional YYYY-MM-DD end date for range search"),
     session: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(require_permission(Permission.VIEW_APPOINTMENT)),
+    current_user: CurrentUser = Depends(require_permission(Permission.VIEW_APPOINTMENT)),
 ) -> DataResponse[list[str]]:
-    """Returns a list of scheduled_at datetimes (ISO format) that have reached maximum capacity (2 bookings) for the given doctor and date range."""
+    """Returns a list of scheduled_at datetimes (ISO format) that have reached maximum capacity (2 bookings) or are already booked by the current patient."""
     from collections import Counter
     from datetime import datetime, timedelta
-    from sqlalchemy import select
+    from sqlalchemy import select, or_
     from core.config.constants import MAX_BOOKINGS_PER_SLOT
     from core.config.settings import settings
     from domains.medai.models.appointment import Appointment, AppointmentStatus
+    from domains.medai.services.patient_service import PatientService
 
     try:
         start_dt = datetime.strptime(date, "%Y-%m-%d")
@@ -195,8 +198,12 @@ async def get_booked_slots(
         AppointmentStatus.IN_PROGRESS,
     ]
 
+    # Query all active appointments for this doctor in date range
     query = select(Appointment.scheduled_at).where(
-        Appointment.doctor_id == str(doctor_id),
+        or_(
+            Appointment.doctor_id == doctor_id,
+            Appointment.doctor_id == str(doctor_id),
+        ),
         Appointment.scheduled_at >= start_dt,
         Appointment.scheduled_at < end_dt,
         Appointment.status.in_(active_statuses),
@@ -219,14 +226,45 @@ async def get_booked_slots(
     # Count bookings per slot
     slot_counts = Counter(raw_slots)
     # A slot is fully booked if count >= max_slot_limit
-    fully_booked_slots = [
+    unavailable_slots = {
         dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
         for dt, count in slot_counts.items()
         if count >= max_slot_limit
-    ]
-    return DataResponse(data=fully_booked_slots)
+    }
 
+    # If current user is a patient, also mark any slot already booked by this patient as unavailable
+    if current_user and getattr(current_user, "role", "") in ("patient", "user"):
+        try:
+            patient_svc = PatientService(session)
+            patient_rec = await patient_svc.get_patient_by_user_id(
+                current_user.user_id, user_email=current_user.email
+            )
+            patient_conditions = [Appointment.patient_id == str(current_user.user_id)]
+            if patient_rec:
+                patient_conditions.append(Appointment.patient_id == patient_rec.id)
+                patient_conditions.append(Appointment.patient_id == str(patient_rec.id))
 
+            pat_slot_query = select(Appointment.scheduled_at).where(
+                or_(*patient_conditions),
+                Appointment.scheduled_at >= start_dt,
+                Appointment.scheduled_at < end_dt,
+                Appointment.status.in_(active_statuses),
+                Appointment.is_deleted == False,
+            )
+            pat_slot_res = await session.execute(pat_slot_query)
+            if hasattr(pat_slot_res, "scalars"):
+                pat_slots = list(pat_slot_res.scalars().all())
+            else:
+                pat_slots = list(pat_slot_res)
+
+            for ps in pat_slots:
+                if ps:
+                    iso_str = ps.isoformat() if hasattr(ps, "isoformat") else str(ps)
+                    unavailable_slots.add(iso_str)
+        except Exception:
+            pass
+
+    return DataResponse(data=sorted(list(unavailable_slots)))
 
 
 @router.get("/{appt_id}", response_model=DataResponse[AppointmentOut], summary="Get appointment")
