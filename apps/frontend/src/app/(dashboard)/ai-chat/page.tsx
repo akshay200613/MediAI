@@ -10,6 +10,7 @@ import { ChatSidebar } from '@/components/chat/ChatSidebar'
 import { ChatMessages } from '@/components/chat/ChatMessages'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { ChatEmptyState } from '@/components/chat/ChatEmptyState'
+import { CitationPanel } from '@/components/chat/CitationPanel'
 import { pageTransition } from '@/lib/motion'
 
 export default function AIChatPage() {
@@ -22,6 +23,12 @@ export default function AIChatPage() {
     activeSessionId,
     isGenerating,
     sendMessage,
+    citationPanelOpen,
+    panelCitations,
+    selectedCitationId,
+    openCitationPanel,
+    closeCitationPanel,
+    setSelectedCitationId,
   } = useChatStore()
 
   // Derive a safe display name — never expose raw email
@@ -168,6 +175,7 @@ export default function AIChatPage() {
               messages={messages}
               isGenerating={isGenerating}
               userName={displayName}
+              onSelectCitation={(citationId, citations) => openCitationPanel(citations, citationId)}
               onRetryMessage={(prompt) => sendMessage(prompt)}
               onActionSelected={(prompt) => sendMessage(prompt)}
             />
@@ -177,6 +185,15 @@ export default function AIChatPage() {
         {/* Fixed Bottom Input Bar */}
         <ChatInput onSend={(text) => sendMessage(text)} isGenerating={isGenerating} />
       </div>
+
+      {/* Slide-over Citation Inspector Panel */}
+      <CitationPanel
+        isOpen={citationPanelOpen}
+        onClose={closeCitationPanel}
+        citations={panelCitations}
+        selectedCitationId={selectedCitationId}
+        onSelectCitation={(id) => setSelectedCitationId(id)}
+      />
     </motion.div>
   )
 }

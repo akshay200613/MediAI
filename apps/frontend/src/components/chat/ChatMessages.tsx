@@ -16,6 +16,7 @@ import {
 import type { ChatMessage, Citation } from '@/types/chat'
 
 import { ActionCards } from './ActionCards'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface ChatMessagesProps {
   messages: ChatMessage[]
@@ -43,73 +44,7 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
     }
   }, [messages, isGenerating])
 
-  // Simple Markdown Formatter Helper
-  const renderMarkdown = (text: string) => {
-    if (!text) return null
-
-    // Split into paragraphs / lines
-    const lines = text.split('\n')
-    return (
-      <div className="space-y-2 text-xs sm:text-sm text-slate-200 leading-relaxed font-sans">
-        {lines.map((line, idx) => {
-          if (!line.trim()) return <div key={idx} className="h-1.5" />
-
-          // Headers
-          if (line.startsWith('### ')) {
-            return (
-              <h4 key={idx} className="font-semibold text-sm text-slate-100 mt-3 mb-1">
-                {line.replace('### ', '')}
-              </h4>
-            )
-          }
-          if (line.startsWith('## ')) {
-            return (
-              <h3 key={idx} className="font-semibold text-base text-slate-100 mt-4 mb-1 border-b border-slate-800 pb-1">
-                {line.replace('## ', '')}
-              </h3>
-            )
-          }
-
-          // Bullet points
-          if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
-            const cleanText = line.trim().replace(/^[-*]\s+/, '')
-            return (
-              <div key={idx} className="flex items-start gap-2 pl-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0 mt-1.5" />
-                <span>{formatInlineFormatting(cleanText)}</span>
-              </div>
-            )
-          }
-
-          // Default text line
-          return <p key={idx}>{formatInlineFormatting(line)}</p>
-        })}
-      </div>
-    )
-  }
-
-  // Format bold / inline code
-  const formatInlineFormatting = (str: string) => {
-    // Bold **text**
-    const parts = str.split(/(\*\*.*?\*\*|`.*?`)/g)
-    return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return (
-          <strong key={i} className="font-semibold text-slate-100">
-            {part.slice(2, -2)}
-          </strong>
-        )
-      }
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return (
-          <code key={i} className="px-1.5 py-0.5 rounded bg-slate-800 text-teal-300 font-mono text-xs">
-            {part.slice(1, -1)}
-          </code>
-        )
-      }
-      return <span key={i}>{part}</span>
-    })
-  }
+  // Use MarkdownRenderer component for rendering rich Markdown (tables, headings, paragraphs, lists, code blocks, blockquotes, links, citations)
 
   // Helper to format any arbitrary JSON object/array into clean, human-readable text
   const formatJsonToReadableText = (obj: any): string => {
@@ -204,7 +139,7 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
       return { text: content, actionData: null }
     }
 
-    // 2. Assistant messages: extract ANY json block (codefence ```json ... ```, ``` ... ```, or raw { "action": ... })
+    // 2. Assistant messages: extract booking/action json blocks while preserving standard Markdown code blocks
     let actionData: any = null
     let cleaned = content
 
@@ -217,28 +152,22 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
           const parsed = JSON.parse(trimmed)
           if (parsed && typeof parsed === 'object' && parsed.action) {
             actionData = parsed
-            return '' // Remove action JSON block from rendered text
+            return '' // Remove interactive action JSON block from rendered text
           }
-          // For non-action JSON blocks, convert to clean readable text
-          return formatJsonToReadableText(parsed)
-        } catch {
-          return fullMatch
-        }
+        } catch {}
       }
-      return fullMatch
+      return fullMatch // Preserve standard markdown code blocks
     }).trim()
 
-    // If whole content or substring is a standalone JSON object
+    // If whole content or substring is a standalone action JSON object
     if (!actionData) {
       const trimmedCleaned = cleaned.trim()
-      if ((trimmedCleaned.startsWith('{') && trimmedCleaned.endsWith('}')) || (trimmedCleaned.startsWith('[') && trimmedCleaned.endsWith(']'))) {
+      if (trimmedCleaned.startsWith('{') && trimmedCleaned.endsWith('}')) {
         try {
           const parsed = JSON.parse(trimmedCleaned)
           if (parsed && typeof parsed === 'object' && parsed.action) {
             actionData = parsed
             cleaned = ''
-          } else {
-            cleaned = formatJsonToReadableText(parsed)
           }
         } catch {}
       } else {
@@ -254,9 +183,6 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
         }
       }
     }
-
-    // Ensure any leftover backtick blocks like ```json or ``` are cleanly stripped
-    cleaned = cleaned.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim()
 
     return { text: cleaned, actionData }
   }
@@ -323,14 +249,40 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
                     </div>
                   )}
 
-                  {/* Render Text Content & Action Cards (No raw JSON shown) */}
+                  {/* Render Rich Markdown Content & Action Cards */}
                   {(() => {
                     const { text, actionData } = parseContentAndAction(msg.content, isUser);
                     return (
                       <>
-                        {text && renderMarkdown(text)}
+                        {text && (
+                          <MarkdownRenderer
+                            content={text}
+                            citations={msg.citations}
+                            onSelectCitation={onSelectCitation}
+                          />
+                        )}
                         {actionData && (
                           <ActionCards actionData={actionData} onAction={(m) => onActionSelected?.(m)} />
+                        )}
+                        {!isUser && msg.citations && msg.citations.length > 0 && (
+                          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 mr-1">
+                              <FileText className="w-3.5 h-3.5 text-teal-400" />
+                              Sources ({msg.citations.length}):
+                            </span>
+                            {msg.citations.map((cite, cIdx) => (
+                              <button
+                                key={cite.id || cIdx}
+                                type="button"
+                                onClick={() => onSelectCitation?.(cite.id, msg.citations || [])}
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-[11px] text-slate-300 hover:text-teal-300 border border-slate-700/60 hover:border-teal-500/40 transition-colors cursor-pointer"
+                                title={cite.excerpt ? `"${cite.excerpt.slice(0, 120)}..."` : cite.documentName}
+                              >
+                                <span className="font-mono font-semibold text-teal-400">[{cIdx + 1}]</span>
+                                <span className="max-w-[150px] truncate">{cite.documentName}</span>
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </>
                     )

@@ -657,6 +657,39 @@ async def chat(
         else:
             final_response_text = "I have processed your request."
 
+    # Collect structured sources from specialist tool results or tool messages
+    sources = []
+    seen_ids = set()
+    for tr in result.get("tool_results", []):
+        if isinstance(tr, dict) and "sources" in tr and isinstance(tr["sources"], list):
+            for s in tr["sources"]:
+                if isinstance(s, dict):
+                    sid = s.get("chunk_id") or s.get("document_id") or s.get("id") or str(s)
+                    if sid not in seen_ids:
+                        seen_ids.add(sid)
+                        sources.append(s)
+
+    for msg_item in result.get("messages", []):
+        if hasattr(msg_item, "artifact") and isinstance(msg_item.artifact, dict) and "sources" in msg_item.artifact:
+            for s in msg_item.artifact["sources"]:
+                if isinstance(s, dict):
+                    sid = s.get("chunk_id") or s.get("document_id") or s.get("id") or str(s)
+                    if sid not in seen_ids:
+                        seen_ids.add(sid)
+                        sources.append(s)
+        elif hasattr(msg_item, "content") and isinstance(msg_item.content, str) and '"sources":' in msg_item.content:
+            try:
+                parsed_tm = json.loads(msg_item.content)
+                if isinstance(parsed_tm, dict) and "sources" in parsed_tm and isinstance(parsed_tm["sources"], list):
+                    for s in parsed_tm["sources"]:
+                        if isinstance(s, dict):
+                            sid = s.get("chunk_id") or s.get("document_id") or s.get("id") or str(s)
+                            if sid not in seen_ids:
+                                seen_ids.add(sid)
+                                sources.append(s)
+            except Exception:
+                pass
+
     # Persist exchange to database
     session_title = message.content[:32] + ("..." if len(message.content) > 32 else "")
     await session_mgr.add_exchange(current_user.user_id, session_id, message.content, final_response_text, title=session_title)
@@ -665,7 +698,7 @@ async def chat(
         data=ChatResponse(
             content=final_response_text,
             session_id=session_id,
-            sources=[],
+            sources=sources,
             agent_name=result.get("current_agent", "supervisor"),
             tool_calls=tool_calls,
         ),

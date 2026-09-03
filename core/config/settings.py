@@ -94,7 +94,7 @@ class Settings(BaseSettings):
 
     # ── Google AI / Gemini (Embeddings & Fallback) ─────────────────────────────
     gemini_api_key: str = ""
-    gemini_embedding_model: str = "text-embedding-001"
+    gemini_embedding_model: str = "gemini-embedding-001"
     gemini_embedding_dimension: int = 768
     gemini_max_tokens: int = 8192
     gemini_temperature: float = 1.0
@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     model_fallback_reception: str = "groq/openai/gpt-oss-20b"
     model_fallback_medical: str = "groq/openai/gpt-oss-120b"
     model_fallback_scheduling: str = "groq/openai/gpt-oss-20b"
-    model_fallback_knowledge: str = "groq/openai/gpt-oss-120b"
+    model_fallback_knowledge: str = "groq/openai/gpt-oss-20b"
     model_fallback_supervisor: str = "groq/openai/gpt-oss-120b"
 
     # ── LiteLLM Router ────────────────────────────────────────────────────────

@@ -368,10 +368,16 @@ class LiteLLMClient(BaseLLMClient):
                 else self._embedding_model
             )
 
-            response = await aembedding(
-                model=embed_model,
-                input=text,
-            )
+            kwargs: dict[str, Any] = {
+                "model": embed_model,
+                "input": text,
+            }
+            if settings.gemini_api_key:
+                kwargs["api_key"] = settings.gemini_api_key
+            if settings.gemini_embedding_dimension:
+                kwargs["dimensions"] = settings.gemini_embedding_dimension
+
+            response = await aembedding(**kwargs)
 
             return response.data[0]["embedding"]
 
