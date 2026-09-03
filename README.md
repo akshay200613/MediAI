@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/FastAPI-0.115+-009688.svg?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/Next.js-15.1-black.svg?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js 15" />
   <img src="https://img.shields.io/badge/LangGraph-StateGraph-FF6F00.svg?style=for-the-badge&logo=langchain&logoColor=white" alt="LangGraph" />
-  <img src="https://img.shields.io/badge/Google%20Gemini-2.0%20Flash-4285F4.svg?style=for-the-badge&logo=google&logoColor=white" alt="Gemini" />
+  <img src="https://img.shields.io/badge/Google%20Gemini-3.6%20Flash-4285F4.svg?style=for-the-badge&logo=google&logoColor=white" alt="Gemini" />
   <img src="https://img.shields.io/badge/Qdrant-Vector%20DB-DC2626.svg?style=for-the-badge&logo=qdrant&logoColor=white" alt="Qdrant" />
   <img src="https://img.shields.io/badge/PostgreSQL-16%20Async-336791.svg?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Redis-7%20Alpine-DC382D.svg?style=for-the-badge&logo=redis&logoColor=white" alt="Redis" />
@@ -24,10 +24,12 @@
 - [Directory Structure](#-directory-structure)
 - [Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
-  - [Quick Start (One-Command / PowerShell)](#quick-start-powershell)
-  - [Manual Step-by-Step Setup](#manual-step-by-step-setup)
+  - [Quick Start (PowerShell / Windows)](#quick-start-powershell)
+  - [Option A: Full Docker Deployment](#option-a-full-docker-deployment-recommended)
+  - [Option B: Local Development Setup](#option-b-local-development-setup)
 - [Default Seed Accounts & Demo Credentials](#-default-seed-accounts--demo-credentials)
 - [API Reference](#-api-reference)
+- [Docker & Production Deployment](#-docker--production-deployment)
 - [Monitoring & Observability](#-monitoring--observability)
 - [Testing & Code Quality](#-testing--code-quality)
 - [Environment Variables](#-environment-variables)
@@ -228,27 +230,24 @@ Make sure the following tools are installed on your workstation:
 
 ---
 
-### Quick Start (PowerShell)
+### Quick Start (PowerShell / Windows)
 
-If you are on Windows, you can use the bundled automated startup script:
+If you are on Windows, you can run the automated startup script:
 
 ```powershell
-# 1. Run the one-click startup script
+# 1. Run the one-click startup script (activates .venv, starts backing Docker services, and launches uvicorn)
 .\start.ps1
 ```
 
 ---
 
-### Manual Step-by-Step Setup
+### Step-by-Step Setup
 
-#### 1. Clone the Repository
+#### 1. Clone the Repository & Configure Environment
 ```bash
 git clone https://github.com/your-org/medai.git
 cd medai
-```
 
-#### 2. Environment Configuration
-```bash
 # Copy template configuration
 cp .env.example .env
 
@@ -257,49 +256,61 @@ cp .env.example .env
 # Copy-Item .env.example .env
 ```
 
-#### 3. Start Infrastructure Services (Docker)
-Launch PostgreSQL, Redis, Qdrant, Prometheus, and Grafana:
+---
+
+#### Option A: Full Docker Deployment (Recommended)
+Run the entire platform (FastAPI, PostgreSQL, Redis, Qdrant, Prometheus, Grafana) inside Docker:
+
 ```bash
-docker compose up -d
-```
-Verify that all containers are healthy:
-```bash
+# Build and launch all containerized services in the background
+docker compose up -d --build
+
+# Verify all services are healthy and running
 docker compose ps
+
+# Seed initial system accounts (Admin, Doctor, Patient) inside the container
+docker compose exec api python seed_admin.py
 ```
 
-#### 4. Backend Setup & Migrations
+- **API Server & Swagger**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Start Frontend**:
+  ```bash
+  cd apps/frontend && npm install && npm run dev
+  ```
+- **Web Application**: [http://localhost:3000](http://localhost:3000)
+
+---
+
+#### Option B: Local Development Setup
+Run PostgreSQL, Redis, and Qdrant in Docker, but run FastAPI directly on your host machine with hot-reload:
+
 ```bash
-# Create and activate a Python virtual environment
+# 1. Start ONLY backing infrastructure services (leaves port 8000 open for local FastAPI)
+docker compose up -d postgres redis qdrant prometheus grafana
+
+# 2. Setup Python virtual environment & dependencies
 python -m venv .venv
 source .venv/bin/activate       # On Windows: .venv\Scripts\Activate.ps1
 
-# Install dependencies
 pip install uv
 uv sync --all-extras
 
-# Run database migrations
+# 3. Apply database migrations & seed initial accounts
 alembic upgrade head
-
-# Seed initial system accounts (Admin, Doctor, Patient)
 python seed_admin.py
-```
 
-#### 5. Start the FastAPI Backend
-```bash
+# 4. Start FastAPI server with hot-reload
 uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-- **API Server**: [http://localhost:8000](http://localhost:8000)
-- **Interactive Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc Reference**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
-#### 6. Start the Next.js Frontend
-Open a new terminal window:
+In a separate terminal, start the Next.js frontend:
 ```bash
 cd apps/frontend
 npm install
 npm run dev
 ```
 - **Web Application**: [http://localhost:3000](http://localhost:3000)
+- **Interactive Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
 
@@ -322,9 +333,13 @@ When you run `python seed_admin.py`, the following demo accounts are created:
 | `POST` | `/api/v1/auth/register` | Register a new user account | No |
 | `POST` | `/api/v1/auth/login` | Authenticate and obtain JWT access & refresh tokens | No |
 | `POST` | `/api/v1/auth/refresh` | Refresh an expired access token | Yes (Refresh Token) |
+| `POST` | `/api/v1/auth/logout` | Revoke active token & blacklist session in Redis | Yes (Bearer Token) |
 | `GET` | `/api/v1/auth/me` | Retrieve currently authenticated user profile | Yes (Bearer Token) |
+| `POST` | `/api/v1/auth/password-reset/request` | Submit password reset request for Admin review | No |
+| `GET` | `/api/v1/auth/password-reset/pending` | List pending password reset requests | Admin |
+| `POST` | `/api/v1/auth/password-reset/approve` | Approve reset request & set temporary password | Admin |
 
-###  Clinic Management (`/api/v1/medai`)
+### 🏥 Clinic Management (`/api/v1/medai`)
 | Method | Endpoint | Description | Roles |
 |---|---|---|---|
 | `GET` / `POST` | `/api/v1/medai/patients` | List patients / Register a patient | Admin, Doctor |
@@ -335,8 +350,9 @@ When you run `python seed_admin.py`, the following demo accounts are created:
 | `GET` / `PATCH` / `DELETE` | `/api/v1/medai/appointments/{id}` | View / Reschedule / Cancel appointment | Patient, Doctor, Admin |
 | `GET` | `/api/v1/medai/doctor-dashboard/summary`| Doctor metrics, today's schedule & stats | Doctor |
 | `GET` | `/api/v1/medai/admin/stats` | System analytics and clinic overview | Admin |
+| `POST` | `/api/v1/medai/uploads/image` | Upload doctor profile images and clinical media | Admin, Doctor |
 
-###  AI, RAG & Real-Time
+### 🤖 AI, RAG & Real-Time
 | Method | Endpoint | Description | Details |
 |---|---|---|---|
 | `POST` | `/api/v1/medai/chat` | Chat with the Multi-Agent Assistant | LangGraph state graph routing |
@@ -348,7 +364,38 @@ When you run `python seed_admin.py`, the following demo accounts are created:
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/v1/health` | Comprehensive health check (PostgreSQL, Redis, Qdrant status) |
+| `GET` | `/api/v1/health/live` | Container liveness probe (HTTP 200) |
+| `GET` | `/api/v1/health/ready` | Container readiness probe (checks DB connectivity) |
 | `GET` | `/metrics` | Prometheus metrics scrape endpoint |
+
+---
+
+## 🐳 Docker & Production Deployment
+
+MediAI features a hardened, multi-stage, non-root production Docker configuration:
+
+### Production Container Build
+```bash
+# Build the production image with all system dependencies and non-root user
+docker build -t medai-api:latest .
+
+# Run container with production environment variables
+docker run -d -p 8000:8000 \
+  --env-file .env \
+  --name medai_api \
+  medai-api:latest
+```
+
+### Key Container Architecture
+- **Multi-Stage Build**: Compiles wheel dependencies in a dedicated build stage and copies site-packages into a lean `python:3.11-slim-bookworm` runtime image.
+- **Least-Privilege Security**: Runs as an unprivileged system user `appuser` (`UID 10001`, `GID 10001`).
+- **Pre-Configured Storage Mounts**: Pre-creates `/app/uploads` and `/app/data/indexes` with non-root ownership for zero-permission-error volume mounting.
+- **Automated Migrations**: `entrypoint.sh` executes database migrations (`alembic upgrade head`) before spawning the multi-worker Uvicorn application server.
+- **Native Healthcheck**: Built-in container `HEALTHCHECK` probing `GET /api/v1/health/live`.
+
+### Cloud Deployment (GCP / AWS / Azure)
+- **GCP Compute Engine / AWS EC2**: Run `docker compose up -d` on an Ubuntu VM with persistent SSD volumes.
+- **Google Cloud Run**: Dynamic port binding via `${PORT:-8000}`. Mount a Google Cloud Storage (GCS) bucket to `/app/uploads` for persistent doctor profile images and clinical media, connecting to Google Cloud SQL and Memorystore Redis.
 
 ---
 
@@ -428,17 +475,25 @@ Key environment variables configurable in `.env`:
 |---|---|---|---|
 | **App** | `ENVIRONMENT` | `development` | Deployment environment (`development`, `staging`, `production`) |
 | **App** | `API_PORT` | `8000` | FastAPI server port |
-| **App** | `ALLOWED_ORIGINS` | `http://localhost:3000,...` | CORS allowed origins |
+| **App** | `ALLOWED_ORIGINS` | `http://localhost:3000,...` | CORS allowed origins (Array or JSON list) |
 | **Database** | `DATABASE_URL` | `postgresql+asyncpg://...` | Async PostgreSQL connection string |
 | **Cache** | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
-| **Vector DB** | `QDRANT_HOST` / `PORT` | `localhost:6333` | Qdrant host and port |
-| **Security** | `JWT_SECRET_KEY` | *(Secret)* | Secret key used for signing JWTs |
-| **Security** | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token lifespan |
+| **Vector DB** | `QDRANT_HOST` / `QDRANT_PORT` | `localhost` / `6333` | Qdrant host and HTTP port |
+| **Security** | `JWT_SECRET_KEY` | *(Secret)* | Secret key used for signing JWT access and refresh tokens |
+| **Security** | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token lifespan in minutes |
+| **Admin Bootstrap** | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | *(Optional)* | Initial Admin credentials created via `scripts.create_admin` |
+| **Email / SMTP** | `SMTP_HOST` / `SMTP_PORT` | *(Empty)* / `587` | SMTP server host and TLS port |
+| **Email / SMTP** | `EMAILS_ENABLED` | `false` | Enable/disable background appointment reminder emails |
 | **AI Models** | `GEMINI_API_KEY` | *(Required)* | Google AI Gemini API Key |
-| **AI Models** | `MODEL_SUPERVISOR` | `gemini/gemini-2.0-flash` | Primary supervisor model |
-| **AI Fallback** | `GROQ_API_KEY` | *(Optional)* | Groq API Key for fallback routing |
-| **RAG** | `RAG_CHUNK_SIZE` | `512` | Token chunk size for document splitting |
-| **RAG** | `RAG_TOP_K` | `5` | Candidate documents retrieved per search |
+| **AI Models** | `MODEL_SUPERVISOR` | `gemini/gemini-3.6-flash` | Primary supervisor routing model |
+| **AI Fallback** | `GROQ_API_KEY` | *(Optional)* | Groq API Key for secondary fallback routing |
+| **RAG** | `RAG_CHUNK_SIZE` / `OVERLAP` | `512` / `64` | Token chunk size and sliding overlap for document ingestion |
+| **RAG** | `RAG_TOP_K` | `5` | Top candidate chunks retrieved per search query |
+| **RAG** | `RAG_SCORE_THRESHOLD` | `0.35` | Minimum cosine relevance score threshold |
+| **RAG** | `RAG_ENABLE_RERANKER` | `false` | Enable Cross-Encoder post-retrieval reranking |
+| **Booking Limits** | `MAX_BOOKINGS_PER_SLOT` | `2` | Maximum concurrent patient bookings allowed per 30-min slot |
+| **Booking Limits** | `MAX_ACTIVE_APPOINTMENTS_PER_PATIENT`| `2` | Maximum active upcoming bookings per individual patient |
+| **Agent State** | `LANGGRAPH_CHECKPOINT_BACKEND` | `memory` | LangGraph checkpointer backend (`memory` or `redis`) |
 | **Tracing** | `LANGCHAIN_TRACING_V2` | `false` | Enable LangSmith tracing |
 
 ---

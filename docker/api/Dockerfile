@@ -18,8 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy packaging metadata
 COPY pyproject.toml README.md ./
 
-# Install pip build tools and dependencies into a dedicated prefix
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel hatchling && \
+# Create package stubs so hatchling can build dependencies without failing on missing source
+RUN mkdir -p core domains apps && \
+    touch core/__init__.py domains/__init__.py apps/__init__.py && \
+    pip install --no-cache-dir --upgrade pip setuptools wheel hatchling && \
     pip install --no-cache-dir --prefix=/install .
 
 # ── Stage 2: Runtime Image ───────────────────────────────────────────────────
@@ -30,15 +32,21 @@ LABEL description="MediAI Production Backend API Container"
 
 WORKDIR /app
 
-# Set production environment flags
+# Set production environment flags & cache paths for non-root execution
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/install/bin:$PATH" \
-    PYTHONPATH="/app:/install/lib/python3.11/site-packages:$PYTHONPATH"
+    PYTHONPATH="/app:/install/lib/python3.11/site-packages:$PYTHONPATH" \
+    HF_HOME="/home/appuser/.cache/huggingface" \
+    TORCH_HOME="/home/appuser/.cache/torch"
 
-# Install minimal runtime system dependencies (libpq for postgres, curl for healthchecks)
+# Install runtime system dependencies:
+# - libpq5: PostgreSQL driver support
+# - libmagic1: Required by python-magic / unstructured for RAG file parsing
+# - curl: Required for container health checks
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    libmagic1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -49,16 +57,21 @@ COPY --from=builder /install /install
 RUN groupadd --gid 10001 appgroup && \
     useradd --uid 10001 --gid appgroup --shell /bin/bash --create-home appuser
 
-# Copy application source code
+# Copy application source code and operational scripts
 COPY --chown=appuser:appgroup alembic.ini ./
 COPY --chown=appuser:appgroup apps ./apps
 COPY --chown=appuser:appgroup core ./core
 COPY --chown=appuser:appgroup domains ./domains
 COPY --chown=appuser:appgroup data ./data
+COPY --chown=appuser:appgroup scripts ./scripts
+COPY --chown=appuser:appgroup seed_admin.py ./
 COPY --chown=appuser:appgroup docker/api/entrypoint.sh /usr/local/bin/entrypoint.sh
 
-RUN chmod +x /usr/local/bin/entrypoint.sh && \
-    chown -R appuser:appgroup /app
+# Pre-create writable directories for uploads & RAG indexes, sanitize entrypoint line-endings
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh && \
+    mkdir -p /app/uploads /app/data/indexes /home/appuser/.cache && \
+    chown -R appuser:appgroup /app /home/appuser/.cache
 
 # Switch to non-root user
 USER appuser

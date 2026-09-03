@@ -13,6 +13,7 @@ apps/frontend/
 node_modules/
 .env.local
 data/indexes/
+uploads/
 *.log
 .DS_Store
 Thumbs.db
