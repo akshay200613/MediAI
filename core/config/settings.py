@@ -131,6 +131,7 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = 64
     rag_top_k: int = 5
     rag_score_threshold: float = 0.35
+    rag_enable_reranker: bool = False
 
     # ── LangGraph Agent System ────────────────────────────────────────────────
     langgraph_recursion_limit: int = 25

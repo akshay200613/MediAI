@@ -97,7 +97,7 @@ export default function DoctorsPage() {
                   </div>
                 </div>
                 {d.consultation_fee > 0 && (
-                  <p className="mt-2 text-xs text-slate-500">Consultation: <span className="text-slate-300 font-medium">${d.consultation_fee}</span></p>
+                  <p className="mt-2 text-xs text-slate-500">Consultation: <span className="text-slate-300 font-medium">₹{d.consultation_fee}</span></p>
                 )}
               </div>
             </Link>

@@ -645,7 +645,7 @@ export default function PatientBookPage() {
                           <div className="flex items-center justify-between">
                             <h3 className="font-semibold text-slate-100">{doc.full_name}</h3>
                             <span className="text-[10px] font-mono text-teal-300 px-2 py-0.5 rounded bg-teal-500/10 border border-teal-500/20">
-                              ${doc.consultation_fee}
+                              ₹{doc.consultation_fee}
                             </span>
                           </div>
                           <p className="text-[11px] text-teal-400 font-medium mt-0.5">{doc.specialty}</p>

@@ -162,7 +162,7 @@ class RAGPipeline:
            fusion_top_k=10,
            rerank_top_k=5,
            rrf_k=60,
-           enable_reranking=True,
+           enable_reranking=settings.rag_enable_reranker,
         )
 
         self.system_prompt = system_prompt
@@ -616,7 +616,7 @@ class RAGPipeline:
         response = await self.llm.generate(
             messages,
             system_prompt=self.system_prompt,
-            model=model,
+            model=model or settings.model_knowledge,
         )
 
         logger.info(

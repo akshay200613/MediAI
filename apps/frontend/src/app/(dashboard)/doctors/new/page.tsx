@@ -112,7 +112,7 @@ export default function NewDoctorPage() {
             <Field label="Years of Experience" error={errors.years_of_experience?.message}>
               <input {...register('years_of_experience')} type="number" min={0} className="input-field" />
             </Field>
-            <Field label="Consultation Fee ($)" error={errors.consultation_fee?.message}>
+            <Field label="Consultation Fee (₹)" error={errors.consultation_fee?.message}>
               <input {...register('consultation_fee')} type="number" min={0} step={0.01} className="input-field" />
             </Field>
             <Field label="Working Hours Start">

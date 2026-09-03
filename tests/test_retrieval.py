@@ -375,7 +375,7 @@ async def run_evaluation(mode: str = "FAST") -> HybridRAGEvalReport:
     async def rate_limited_generate(self, *args, **kwargs):
         async with llm_semaphore:
             res = await original_generate(self, *args, **kwargs)
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(4.5)  # Enforce conservative 12 RPM ceiling for Gemini free tier
             return res
 
     async def rate_limited_embed(self, *args, **kwargs):
@@ -410,7 +410,26 @@ async def run_evaluation(mode: str = "FAST") -> HybridRAGEvalReport:
         t0 = time.perf_counter()
         is_ans = entry.get("answerable", True)
         try:
-            rag_res = await pipeline.query(q_text)
+            max_retries = 3
+            rag_res = None
+            for attempt in range(max_retries):
+                try:
+                    rag_res = await pipeline.query(q_text)
+                    break
+                except Exception as query_exc:
+                    err_str = str(query_exc).lower()
+                    is_rate_limit = (
+                        "429" in err_str
+                        or "ratelimit" in err_str
+                        or "resource_exhausted" in err_str
+                        or "temporarily unavailable" in err_str
+                    )
+                    if is_rate_limit and attempt < max_retries - 1:
+                        backoff = (attempt + 1) * 6
+                        print(f"       Rate limit / busy signal encountered. Backing off for {backoff}s (attempt {attempt + 1}/{max_retries})...")
+                        await asyncio.sleep(backoff)
+                        continue
+                    raise query_exc
 
             latency_ms = (time.perf_counter() - t0) * 1000
 

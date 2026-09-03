@@ -104,18 +104,23 @@ def _build_router() -> Router:
 
     if settings.groq_api_key:
         # Map each unique primary model to its corresponding fallbacks
-        fallback_map: dict[str, set[str]] = {}
+        fallback_map: dict[str, list[str]] = {}
 
         for agent in agents:
             primary = getattr(settings, f"model_{agent}")
             fallback = getattr(settings, f"model_fallback_{agent}")
 
             if primary not in fallback_map:
-                fallback_map[primary] = set()
-            fallback_map[primary].add(fallback)
+                fallback_map[primary] = []
+            if fallback and fallback not in fallback_map[primary]:
+                # Prioritize lightweight 20b model first for speed & higher throughput
+                if "20b" in fallback:
+                    fallback_map[primary].insert(0, fallback)
+                else:
+                    fallback_map[primary].append(fallback)
 
-        for primary, fb_set in fallback_map.items():
-            fallbacks.append({primary: list(fb_set)})
+        for primary, fb_list in fallback_map.items():
+            fallbacks.append({primary: fb_list})
 
     # ------------------------------------------------------------------
     # Cache configuration
