@@ -7,9 +7,8 @@ services:
     image: medai-api:latest
     container_name: medai_api
     restart: unless-stopped
-    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-    volumes:
-      - .:/app
+    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    mem_limit: 280m
     env_file:
       - .env
     environment:
@@ -17,8 +16,8 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-medai}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ak123}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-ak123}@postgres:5432/${POSTGRES_DB:-medai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-medai}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379/0
@@ -26,8 +25,6 @@ services:
       QDRANT_PORT: 6333
       API_HOST: 0.0.0.0
       API_PORT: 8000
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,6 +38,7 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+    networks: [internal, web]
 
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
@@ -50,106 +48,82 @@ services:
     image: medai-postgres:16-alpine-patched
     container_name: medai_postgres
     restart: unless-stopped
+    mem_limit: 200m
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-medai}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ak123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks: [internal]
 
   # ── Redis ────────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: medai_redis
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    mem_limit: 40m
+    command: redis-server --appendonly yes --maxmemory 30mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks: [internal]
 
   # ── Qdrant (Vector DB) ───────────────────────────────────────────────────────
   qdrant:
     image: qdrant/qdrant:latest
     container_name: medai_qdrant
     restart: unless-stopped
+    mem_limit: 350m
     volumes:
       - qdrant_data:/qdrant/storage
-    ports:
-      - "6333:6333"
-      - "6334:6334"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks: [internal]
 
-  # ── Prometheus ───────────────────────────────────────────────────────────────
-  prometheus:
-    image: prom/prometheus:v2.50.1
-    container_name: medai_prometheus
+  # ── Caddy (reverse proxy + auto HTTPS) ──────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: medai_caddy
     restart: unless-stopped
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
+    mem_limit: 30m
     ports:
-      - "9090:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1" ]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    networks: [web]
 
-  # ── Grafana ──────────────────────────────────────────────────────────────────
-  grafana:
-    image: grafana/grafana:10.4.1
-    container_name: medai_grafana
+  # ── Grafana Alloy (forwards /metrics to Grafana Cloud) ──────────────────────
+  grafana-agent:
+    image: grafana/alloy:latest
+    container_name: medai_alloy
     restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-medai_admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_DOMAIN: localhost
-      GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_INSTALL_PLUGINS: ""
+    mem_limit: 50m
     volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-    ports:
-      - "3001:3000"
-    depends_on:
-      prometheus:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1" ]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+      - ./alloy-config.river:/etc/alloy/config.river
+    command: run /etc/alloy/config.river
+    networks: [internal, web]
 
 volumes:
   postgres_data:
   redis_data:
   qdrant_data:
-  prometheus_data:
-  grafana_data:
+  caddy_data:
+
+networks:
+  internal:
+  web:
