@@ -32,6 +32,8 @@ env/
 .env.staging
 .env.production
 *.env
+.env
+alloy-config.river
 
 # === Testing ===
 .pytest_cache/
