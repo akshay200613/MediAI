@@ -1,7 +1,7 @@
 services:
   # ── FastAPI Backend API ─────────────────────────────────────────────────────
   api:
-    image: YOURDOCKERHUBUSERNAME/medai-api:latest
+    image: akshayy201/medai-api:latest
     container_name: medai_api
     restart: unless-stopped
     command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -42,7 +42,7 @@ services:
 
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
-    image: YOURDOCKERHUBUSERNAME/medai-postgres:16-alpine-patched
+    image: akshayy201/medai-postgres:16-alpine-patched
     container_name: medai_postgres
     restart: unless-stopped
     mem_limit: 200m
