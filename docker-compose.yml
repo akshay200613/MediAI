@@ -18,8 +18,6 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379/0
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
       API_HOST: 0.0.0.0
       API_PORT: 8000
     depends_on:
@@ -102,7 +100,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  qdrant_data:
   caddy_data:
   api_uploads:
   api_data_indexes:
