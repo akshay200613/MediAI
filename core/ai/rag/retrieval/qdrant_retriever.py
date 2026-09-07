@@ -2,8 +2,6 @@
 Qdrant Retriever – vector similarity search with optional filters.
 """
 
-from alembic.util import exc
-from mako import filters
 from typing import Any
 
 from qdrant_client.models import Filter, FieldCondition, MatchValue
@@ -28,14 +26,18 @@ class QdrantRetriever:
         self,
         query_vector: list[float],
         top_k: int = 5,
-        score_threshold: float = 0.7,
+        score_threshold: float = 0.0,
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Perform vector similarity search.
 
+        Note: ``score_threshold`` is applied in Python after fetching results
+        rather than being passed to Qdrant directly, ensuring compatibility
+        across all qdrant-client versions.
+
         Returns:
-            List of dicts with 'score' and 'payload' keys.
+            List of dicts with 'score' and 'payload' keys, ordered by score desc.
         """
 
         qdrant_filter = None
@@ -52,23 +54,30 @@ class QdrantRetriever:
             qdrant_filter = Filter(must=conditions)
 
         try:
+            # Fetch more candidates than needed so Python-side threshold
+            # filtering still returns up to top_k results.
+            fetch_limit = max(top_k * 3, 20)
+
             result = await self.client.query_points(
                 collection_name=self.collection_name,
                 query=query_vector,
-                limit=top_k,
-                score_threshold=score_threshold,
+                limit=fetch_limit,
                 query_filter=qdrant_filter,
                 with_payload=True,
             )
 
-            return [
+            # Filter by score threshold and cap at top_k
+            filtered = [
                 {
                     "score": point.score,
                     "payload": point.payload or {},
                     "id": str(point.id),
                 }
                 for point in result.points
+                if point.score >= score_threshold
             ]
+
+            return filtered[:top_k]
 
         except Exception as exc:
             logger.error(
