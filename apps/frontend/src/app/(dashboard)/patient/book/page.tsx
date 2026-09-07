@@ -351,7 +351,7 @@ export default function PatientBookPage() {
     setBookingStatus(null)
 
     try {
-      const scheduledDateTime = `${bookingDate}T${bookingTime}:00`
+      const scheduledDateTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString()
 
       let patientId: string | null = null
       try {
