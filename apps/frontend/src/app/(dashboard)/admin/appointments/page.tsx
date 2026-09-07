@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import apiClient from '@/lib/api/client'
 import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
+import { formatDateTime } from '@/lib/utils'
 
 export default function AdminAppointmentsPage() {
   const [appointments, setAppointments] = useState<any[]>([])
@@ -423,7 +424,7 @@ export default function AdminAppointmentsPage() {
                       />
                     </td>
                     <td className="p-3.5 font-mono text-slate-100">
-                      {new Date(appt.scheduled_at).toLocaleString()}
+                      {formatDateTime(appt.scheduled_at)}
                     </td>
                     <td className="p-3.5">
                       {pat ? (
@@ -528,7 +529,7 @@ export default function AdminAppointmentsPage() {
                   Patient: <span className="font-semibold text-slate-200">{selectedNotesAppt.patient_name}</span> ({selectedNotesAppt.patient_email})
                 </p>
                 <p className="text-[11px] text-slate-400 font-mono">
-                  Scheduled: {new Date(selectedNotesAppt.scheduled_at).toLocaleString()}
+                  Scheduled: {formatDateTime(selectedNotesAppt.scheduled_at)}
                 </p>
               </div>
               <button

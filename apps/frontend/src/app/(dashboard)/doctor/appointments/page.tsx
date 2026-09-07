@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import apiClient from '@/lib/api/client'
 import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
+import { formatDate, formatDateTime, formatTime } from '@/lib/utils'
 
 interface PatientHistory {
   id: string
@@ -282,7 +283,7 @@ export default function DoctorAppointmentsPage() {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-mono text-[11px] text-slate-400">
-                      {new Date(appt.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTime(appt.scheduled_at)}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${status.cls}`}>
                       {status.label}
@@ -324,7 +325,7 @@ export default function DoctorAppointmentsPage() {
                     <div>
                       <h2 className="text-base font-bold text-slate-100">{selectedAppt.patient_name}</h2>
                       <p className="text-xs text-slate-400">
-                        {new Date(selectedAppt.scheduled_at).toLocaleString()} • {selectedAppt.appointment_type}
+                        {formatDateTime(selectedAppt.scheduled_at)} • {selectedAppt.appointment_type}
                       </p>
                     </div>
                   </div>
@@ -420,7 +421,7 @@ export default function DoctorAppointmentsPage() {
                               <div key={h.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1.5">
                                 <div className="flex items-center justify-between">
                                   <span className="font-mono text-[11px] text-slate-400">
-                                    {new Date(h.scheduled_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                    {formatDate(h.scheduled_at)}
                                   </span>
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${st.cls}`}>
                                     {st.label}

@@ -21,6 +21,7 @@ import apiClient from '@/lib/api/client'
 import { useAuth } from '@/lib/auth/context'
 import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
 import { staggerContainer, fadeSlideUp } from '@/lib/motion'
+import { formatDate, formatDateTime } from '@/lib/utils'
 
 function StatCard({
   label,
@@ -240,7 +241,7 @@ export default function PatientDashboardPage() {
                   <div>
                     <h4 className="font-semibold text-slate-100 capitalize">{appt.appointment_type} Consultation</h4>
                     <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      {new Date(appt.scheduled_at).toLocaleString()}
+                      {formatDateTime(appt.scheduled_at)}
                     </p>
                     {appt.reason && (
                       <p className="text-[11px] text-slate-500 mt-0.5 italic truncate max-w-xs">{appt.reason}</p>
@@ -284,7 +285,7 @@ export default function PatientDashboardPage() {
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-mono text-slate-400">
-                    {new Date(c.scheduled_at).toLocaleDateString()}
+                    {formatDate(c.scheduled_at)}
                   </span>
                   <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 px-2 py-0.5 rounded font-medium flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Notes Available

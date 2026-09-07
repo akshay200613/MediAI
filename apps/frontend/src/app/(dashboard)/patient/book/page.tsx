@@ -240,9 +240,9 @@ export default function PatientBookPage() {
 
     const bookedSet = new Set(
       bookedSlots.map((iso: string) => {
-        const d = new Date(iso)
-        const datePart = getLocalDateStr(d)
-        const timePart = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+        const clean = (iso || '').replace(/Z|[+-]\d{2}:\d{2}$/, '')
+        const [datePart, timeWithSec] = clean.split('T')
+        const timePart = timeWithSec ? timeWithSec.slice(0, 5) : ''
         return `${datePart}T${timePart}`
       })
     )
@@ -311,9 +311,9 @@ export default function PatientBookPage() {
 
     const bookedSet = new Set(
       bookedSlots.map((iso: string) => {
-        const d = new Date(iso)
-        const datePart = getLocalDateStr(d)
-        const timePart = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+        const clean = (iso || '').replace(/Z|[+-]\d{2}:\d{2}$/, '')
+        const [datePart, timeWithSec] = clean.split('T')
+        const timePart = timeWithSec ? timeWithSec.slice(0, 5) : ''
         return `${datePart}T${timePart}`
       })
     )
@@ -351,7 +351,7 @@ export default function PatientBookPage() {
     setBookingStatus(null)
 
     try {
-      const scheduledDateTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString()
+      const scheduledDateTime = `${bookingDate}T${bookingTime}:00`
 
       let patientId: string | null = null
       try {

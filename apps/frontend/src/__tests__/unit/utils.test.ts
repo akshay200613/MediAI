@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   formatDate,
   formatDateTime,
+  formatTime,
+  normalizeScheduledDateTime,
   formatTimeAgo,
   getStatusBadgeClass,
   getInitials,
@@ -60,6 +62,32 @@ describe('formatDateTime', () => {
   it('includes the year', () => {
     const result = formatDateTime('2024-06-15T10:00:00Z')
     expect(result).toContain('2024')
+  })
+})
+
+// ── formatTime ────────────────────────────────────────────────────────────
+
+describe('formatTime', () => {
+  it('formats time string correctly', () => {
+    const result = formatTime('2024-01-01T10:00:00Z')
+    expect(result).toMatch(/10:00/i)
+    expect(result).toMatch(/AM|PM/)
+  })
+})
+
+// ── normalizeScheduledDateTime ────────────────────────────────────────────
+
+describe('normalizeScheduledDateTime', () => {
+  it('strips Z suffix', () => {
+    expect(normalizeScheduledDateTime('2026-09-08T10:00:00Z')).toBe('2026-09-08T10:00:00')
+  })
+
+  it('strips timezone offset suffix', () => {
+    expect(normalizeScheduledDateTime('2026-09-08T10:00:00+00:00')).toBe('2026-09-08T10:00:00')
+  })
+
+  it('preserves naive timestamp', () => {
+    expect(normalizeScheduledDateTime('2026-09-08T10:00:00')).toBe('2026-09-08T10:00:00')
   })
 })
 

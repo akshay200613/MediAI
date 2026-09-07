@@ -22,6 +22,7 @@ import {
 import apiClient from '@/lib/api/client'
 import { useAuth } from '@/lib/auth/context'
 import { useAppointmentSocket } from '@/lib/hooks/useAppointmentSocket'
+import { formatTime } from '@/lib/utils'
 
 interface TodayAppointment {
   id: string
@@ -255,7 +256,7 @@ export default function DoctorDashboardPage() {
                       <div>
                         <p className="font-semibold text-slate-100">{appt.patient_name}</p>
                         <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                          {new Date(appt.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {formatTime(appt.scheduled_at)}
                           {' '}• {appt.appointment_type}
                           {appt.patient_phone && <span className="text-slate-600"> • {appt.patient_phone}</span>}
                         </p>

@@ -99,7 +99,8 @@ export default function PatientAppointmentsPage() {
   })
 
   const handleCancel = async (appt: any) => {
-    const scheduledTime = new Date(appt.scheduled_at).getTime()
+    const cleanStr = (appt.scheduled_at || '').replace(/Z|[+-]\d{2}:\d{2}$/, '')
+    const scheduledTime = new Date(cleanStr).getTime()
     const nowTime = new Date().getTime()
     const diffHours = (scheduledTime - nowTime) / (1000 * 60 * 60)
 
@@ -142,7 +143,8 @@ export default function PatientAppointmentsPage() {
     let dateFormatted = 'Scheduled'
     let timeFormatted = ''
     try {
-      const d = new Date(appt.scheduled_at)
+      const cleanStr = (appt.scheduled_at || '').replace(/Z|[+-]\d{2}:\d{2}$/, '')
+      const d = new Date(cleanStr)
       if (!isNaN(d.getTime())) {
         dateFormatted = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
         timeFormatted = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -245,7 +247,8 @@ export default function PatientAppointmentsPage() {
                 let dateFormatted = 'Scheduled'
                 let timeFormatted = ''
                 try {
-                  const d = new Date(appt.scheduled_at)
+                  const cleanStr = (appt.scheduled_at || '').replace(/Z|[+-]\d{2}:\d{2}$/, '')
+                  const d = new Date(cleanStr)
                   if (!isNaN(d.getTime())) {
                     dateFormatted = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
                     timeFormatted = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
