@@ -179,7 +179,7 @@ export default function DoctorDashboardPage() {
             {data?.profile_image_url ? (
               <div className="w-10 h-10 rounded-xl overflow-hidden relative border border-indigo-500/30">
                 <img 
-                  src={data.profile_image_url.startsWith('http') ? data.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${data.profile_image_url}`} 
+                  src={data.profile_image_url.startsWith('http') ? data.profile_image_url : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}${data.profile_image_url}`} 
                   alt={doctorName} 
                   className="object-cover w-full h-full" 
                 />

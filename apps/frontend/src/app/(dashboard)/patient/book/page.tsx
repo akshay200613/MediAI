@@ -634,7 +634,7 @@ export default function PatientBookPage() {
                       <div className="flex items-center gap-3 mb-2">
                         {doc.profile_image_url ? (
                           <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-700">
-                            <img src={doc.profile_image_url.startsWith('http') ? doc.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${doc.profile_image_url}`} alt={doc.full_name} className="object-cover w-full h-full" />
+                            <img src={doc.profile_image_url.startsWith('http') ? doc.profile_image_url : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}${doc.profile_image_url}`} alt={doc.full_name} className="object-cover w-full h-full" />
                           </div>
                         ) : (
                           <div className="w-10 h-10 rounded-full shrink-0 bg-slate-800 flex items-center justify-center text-slate-400 border border-slate-700">
@@ -670,7 +670,7 @@ export default function PatientBookPage() {
                   {selectedDoctor.profile_image_url ? (
                     <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 border border-slate-700">
                       <img 
-                        src={selectedDoctor.profile_image_url.startsWith('http') ? selectedDoctor.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${selectedDoctor.profile_image_url}`} 
+                        src={selectedDoctor.profile_image_url.startsWith('http') ? selectedDoctor.profile_image_url : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}${selectedDoctor.profile_image_url}`} 
                         alt={selectedDoctor.full_name} 
                         className="object-cover w-full h-full" 
                       />
@@ -936,7 +936,7 @@ export default function PatientBookPage() {
                   {selectedDoctor.profile_image_url ? (
                     <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-700">
                       <img 
-                        src={selectedDoctor.profile_image_url.startsWith('http') ? selectedDoctor.profile_image_url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${selectedDoctor.profile_image_url}`} 
+                        src={selectedDoctor.profile_image_url.startsWith('http') ? selectedDoctor.profile_image_url : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}${selectedDoctor.profile_image_url}`} 
                         alt={selectedDoctor.full_name} 
                         className="object-cover w-full h-full" 
                       />
