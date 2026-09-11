@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # MedAI – Local Development Startup Script (Windows PowerShell)
 # Usage: .\start-local.ps1
 # =============================================================================
@@ -28,6 +28,7 @@ if (-not (Test-Path ".env.local")) {
 } else {
     Write-Host "  [1/3] .env.local already exists — skipping" -ForegroundColor DarkGray
 }
+
 
 # Step 2: Build and start containers
 Write-Host "  [2/3] Starting Docker stack (this may take a few minutes on first run)..." -ForegroundColor Cyan
