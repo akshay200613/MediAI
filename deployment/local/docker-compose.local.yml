@@ -2,7 +2,7 @@ services:
   # ── FastAPI Backend API (built from source) ──────────────────────────────────
   api:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile
     container_name: medai_api
     restart: unless-stopped
@@ -10,7 +10,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - ../../.env
     environment:
       # Override with Docker service hostnames (not localhost)
       POSTGRES_HOST: postgres
@@ -43,9 +43,9 @@ services:
       retries: 5
     volumes:
       # Hot-reload: source code changes reflect immediately
-      - ./apps:/app/apps
-      - ./core:/app/core
-      - ./domains:/app/domains
+      - ../../apps:/app/apps
+      - ../../core:/app/core
+      - ../../domains:/app/domains
       - api_uploads:/app/uploads
     networks: [internal, monitoring]
 
@@ -112,7 +112,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - mediai_prometheus_data:/prometheus   # reuse existing metrics history
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -143,7 +143,7 @@ services:
       GF_SERVER_ROOT_URL: "http://localhost:3001"
     volumes:
       - mediai_grafana_data:/var/lib/grafana   # reuse existing dashboards & data
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       prometheus:
         condition: service_healthy
