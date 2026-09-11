@@ -18,13 +18,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy packaging metadata
 COPY pyproject.toml README.md ./
 
-# Create package stubs so hatchling can build dependencies without failing on missing source
-RUN mkdir -p core domains apps && \
+# Install CPU-only torch first, then install all project deps in the SAME RUN step.
+# PYTHONPATH is set inline so pip sees the pre-installed CPU torch when resolving
+# sentence-transformers deps — preventing the ~2GB CUDA package download.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel hatchling && \
+    pip install --no-cache-dir --prefix=/install \
+        torch --index-url https://download.pytorch.org/whl/cpu && \
+    mkdir -p core domains apps && \
     touch core/__init__.py domains/__init__.py apps/__init__.py && \
-    pip install --no-cache-dir --upgrade pip setuptools wheel hatchling && \
-    pip install --no-cache-dir --prefix=/install torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --prefix=/install .
-    
+    PYTHONPATH="/install/lib/python3.11/site-packages" \
+    pip install --no-cache-dir --prefix=/install . && \
+    rm -rf /install/lib/python3.11/site-packages/nvidia \
+           /install/lib/python3.11/site-packages/nvidia_* \
+           /install/lib/python3.11/site-packages/triton \
+           /install/lib/python3.11/site-packages/cuda
 # ── Stage 2: Runtime Image ───────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS runtime
 

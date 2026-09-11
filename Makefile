@@ -3,7 +3,7 @@
 # Usage: make <target>
 # =============================================================================
 
-.PHONY: help install dev test lint format typecheck migrate clean
+.PHONY: help install dev test lint format typecheck migrate clean local-up local-down local-build local-logs local-setup
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 CYAN  := \033[0;36m
@@ -55,6 +55,22 @@ docker-down: ## Stop all Docker services
 
 docker-logs: ## Tail Docker logs
 	docker compose logs -f
+
+# ── Local Development (docker-compose.local.yml) ─────────────────────────────
+local-setup: ## First-time local setup: copy .env.local.example → .env.local
+	@if not exist .env.local (copy .env.local.example .env.local && echo .env.local created. Fill in your API keys.) else (echo .env.local already exists, skipping.)
+
+local-up: ## Start full local stack (builds from source)
+	docker compose -f docker-compose.local.yml up -d
+
+local-build: ## Rebuild local images after code changes
+	docker compose -f docker-compose.local.yml up -d --build
+
+local-down: ## Stop local stack
+	docker compose -f docker-compose.local.yml down
+
+local-logs: ## Tail local stack logs
+	docker compose -f docker-compose.local.yml logs -f
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 test: ## Run all tests with coverage

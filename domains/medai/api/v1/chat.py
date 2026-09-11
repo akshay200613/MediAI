@@ -24,6 +24,7 @@ from domains.medai.schemas.chat import ChatMessage, ChatResponse
 from core.ai.llm.litellm_client import get_llm_client, AIServiceUnavailableError
 from core.ai.conversation.session_manager import SessionManager
 from core.ai.llm.client import Message
+from core.ai.conversation.patient_memory import get_patient_memory_service
 from core.models.user import User
 from domains.medai.models.patient import Patient
 
@@ -491,11 +492,21 @@ async def chat(
             message="Chat processed successfully",
         )
 
-    # Load conversation history strictly for this authenticated user and session
-    history = await session_mgr.get_last_n_messages(current_user.user_id, session_id, n=10)
+    # Tier 2: Semantic Episodic Memory (Qdrant recall based on query semantics)
+    patient_mem_svc = get_patient_memory_service()
+    semantic_memories = await patient_mem_svc.recall_memories(
+        user_id=current_user.user_id,
+        query=message.content,
+        top_k=3,
+    )
 
-    # Load cross-session memory strictly for this authenticated patient
-    long_term_memory = await session_mgr.get_recent_history_cross_session(current_user.user_id, n=20)
+    # Tier 3: Active Working Memory (Last 6 turns of current session in PostgreSQL)
+    history = await session_mgr.get_last_n_messages(current_user.user_id, session_id, n=6)
+
+    # Cross-session fallback memory if semantic memory returns empty
+    long_term_memory = []
+    if not semantic_memories:
+        long_term_memory = await session_mgr.get_recent_history_cross_session(current_user.user_id, n=10)
 
     # Extract and update patient details if message contains info
     updated_fields = {}
@@ -553,8 +564,19 @@ async def chat(
         )
     )
 
-    # Inject long-term memory summary as a system message
-    if long_term_memory:
+    # Inject Tier 2 Semantic Episodic Memories if relevant to patient query
+    if semantic_memories:
+        semantic_str = "\n".join([f"- {mem}" for mem in semantic_memories])
+        langchain_messages.append(
+            SystemMessage(
+                content=(
+                    f"[System Note: Relevant Historical Patient Records & Past Consultations (Semantic Episodic Memory):\n"
+                    f"{semantic_str}\n"
+                    f"Use these recalled clinical notes to provide continuous, personalized medical care.]"
+                )
+            )
+        )
+    elif long_term_memory:
         memory_str = "\n".join([f"{m.role}: {m.content}" for m in long_term_memory])
         langchain_messages.append(
             SystemMessage(content=f"[System Note: Patient's recent conversation history across past sessions (Long-Term Memory):\n{memory_str}\n]")
@@ -690,9 +712,19 @@ async def chat(
             except Exception:
                 pass
 
-    # Persist exchange to database
+    # Persist exchange to database (Tier 3 Working Memory)
     session_title = message.content[:32] + ("..." if len(message.content) > 32 else "")
     await session_mgr.add_exchange(current_user.user_id, session_id, message.content, final_response_text, title=session_title)
+
+    # Asynchronously index exchange into Semantic Episodic Memory (Tier 2 in Qdrant)
+    background_tasks.add_task(
+        patient_mem_svc.index_exchange,
+        user_id=current_user.user_id,
+        patient_id=str(pat.id) if pat else None,
+        session_id=session_id,
+        user_msg=message.content,
+        assistant_msg=final_response_text,
+    )
 
     return DataResponse(
         data=ChatResponse(
