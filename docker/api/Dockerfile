@@ -22,8 +22,9 @@ COPY pyproject.toml README.md ./
 RUN mkdir -p core domains apps && \
     touch core/__init__.py domains/__init__.py apps/__init__.py && \
     pip install --no-cache-dir --upgrade pip setuptools wheel hatchling && \
+    pip install --no-cache-dir --prefix=/install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir --prefix=/install .
-
+    
 # ── Stage 2: Runtime Image ───────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS runtime
 

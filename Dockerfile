@@ -22,8 +22,12 @@ COPY pyproject.toml README.md ./
 RUN mkdir -p core domains apps && \
     touch core/__init__.py domains/__init__.py apps/__init__.py && \
     pip install --no-cache-dir --upgrade pip setuptools wheel hatchling && \
-    pip install --no-cache-dir --prefix=/install .
-
+    pip install --no-cache-dir --prefix=/install . && \
+    pip install --no-cache-dir --prefix=/install --force-reinstall --no-deps torch --index-url https://download.pytorch.org/whl/cpu && \
+    rm -rf /install/lib/python3.11/site-packages/nvidia \
+           /install/lib/python3.11/site-packages/nvidia_* \
+           /install/lib/python3.11/site-packages/triton \
+           /install/lib/python3.11/site-packages/cuda
 # ── Stage 2: Runtime Image ───────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS runtime
 

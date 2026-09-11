@@ -95,3 +95,13 @@ addopts = "-v --tb=short --cov=core --cov=domains --cov=apps --cov-report=term-m
 
 [tool.hatch.build.targets.wheel]
 packages = ["core", "domains", "apps"]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
