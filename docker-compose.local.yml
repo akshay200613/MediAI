@@ -12,7 +12,7 @@ services:
     env_file:
       - .env
     environment:
-      # Override host references so they point to Docker service names, not localhost
+      # Override with Docker service hostnames (not localhost)
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-medai}
@@ -42,31 +42,12 @@ services:
       start_period: 60s
       retries: 5
     volumes:
-      # Mount source for hot reload — changes reflect without rebuilding
+      # Hot-reload: source code changes reflect immediately
       - ./apps:/app/apps
       - ./core:/app/core
       - ./domains:/app/domains
       - api_uploads:/app/uploads
-    networks: [internal]
-
-  # ── Next.js Frontend (built from source) ─────────────────────────────────────
-  frontend:
-    build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile.local
-    container_name: medai_frontend
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000"
-      NEXT_PUBLIC_APP_NAME: "MedAI"
-    depends_on:
-      api:
-        condition: service_healthy
-    networks: [internal]
+    networks: [internal, monitoring]
 
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
@@ -78,9 +59,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
-      - "5433:5432"   # mapped to 5433 on host to avoid conflict with local Windows PostgreSQL
+      - "5433:5432"   # 5433 on host to avoid conflict with local Windows PostgreSQL
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mediai_postgres_data:/var/lib/postgresql/data   # reuse existing data volume
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
@@ -97,7 +78,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - mediai_redis_data:/data   # reuse existing data volume
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -114,7 +95,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_storage:/qdrant/storage
+      - mediai_qdrant_storage:/qdrant/storage   # reuse existing vector data
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null && exit 0 || exit 1"]
       interval: 10s
@@ -123,11 +104,71 @@ services:
       retries: 5
     networks: [internal]
 
+  # ── Prometheus ───────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: medai_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - mediai_prometheus_data:/prometheus   # reuse existing metrics history
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks: [internal, monitoring]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Grafana ──────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: medai_grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3001"
+    volumes:
+      - mediai_grafana_data:/var/lib/grafana   # reuse existing dashboards & data
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks: [monitoring]
+
 volumes:
-  postgres_data:
-  redis_data:
-  qdrant_storage:
+  # Reference existing named volumes to preserve all data
+  mediai_postgres_data:
+    external: true
+  mediai_redis_data:
+    external: true
+  mediai_qdrant_storage:
+    external: true
+  mediai_prometheus_data:
+    external: true
+  mediai_grafana_data:
+    external: true
   api_uploads:
 
 networks:
   internal:
+  monitoring:
