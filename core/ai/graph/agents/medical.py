@@ -71,11 +71,22 @@ class MedicalGraphAgent:
         "quota", "429", "rate limit", "rate_limit",
     )
 
+    # Class-level tool cache — populated once on first use.
+    _tools_cache: list | None = None
+
     def __init__(self) -> None:
         self._primary_model = settings.model_medical
         self._fallback_model = settings.model_fallback_medical
         self._temperature = 1.0
         self.llm = self._make_llm(self._primary_model, settings.gemini_api_key)
+
+    async def _get_tools(self) -> list:
+        """Return cached FastMCP tool list, fetching once on first call."""
+        if MedicalGraphAgent._tools_cache is None:
+            all_tools = await mcp_server.list_tools()
+            MedicalGraphAgent._tools_cache = all_tools
+            logger.debug("Medical: tool cache populated", tool_count=len(all_tools))
+        return MedicalGraphAgent._tools_cache
 
     def _make_llm(self, model: str, api_key: str):
         from langchain_litellm import ChatLiteLLM
@@ -168,8 +179,8 @@ class MedicalGraphAgent:
         # ------------------------------------------------------------------
 
         try:
-            # Get LangChain compatible tools from FastMCP server
-            all_tools = await mcp_server.list_tools()
+            # Get LangChain compatible tools from FastMCP server (cached)
+            all_tools = await self._get_tools()
             
             # Tools appropriate for the medical agent
             medical_tool_names = {

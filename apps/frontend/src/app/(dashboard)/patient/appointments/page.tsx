@@ -112,11 +112,21 @@ export default function PatientAppointmentsPage() {
 
     if (!confirm('Are you sure you want to cancel this appointment?')) return
 
+    // ── Optimistic update: flip status immediately in local state ─────────────
+    const previousAppointments = appointments
+    setAppointments((prev) =>
+      prev.map((a) => (a.id === appt.id ? { ...a, status: 'cancelled' } : a))
+    )
+    setNotice('Cancelling appointment…')
+
     try {
       await apiClient.post(`/medai/appointments/${appt.id}/cancel`)
       setNotice('Appointment cancelled successfully.')
+      // Sync with server in background (no loading state needed)
       fetchAppointmentsAndDoctors()
     } catch (err: any) {
+      // ── Revert optimistic update on failure ───────────────────────────────
+      setAppointments(previousAppointments)
       const errMsg = err.response?.data?.detail || err.message || 'Failed to cancel appointment'
       setNotice(`Failed to cancel: ${errMsg}`)
     }

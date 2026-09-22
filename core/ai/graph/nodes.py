@@ -293,6 +293,9 @@ async def mcp_tool_node(state: MedAIState) -> dict:
     """
     Executes tool calls requested by the agents.
     Lazily initializes the LangGraph ToolNode with FastMCP tools.
+
+    Increments ``tool_call_count`` each time it runs so the circuit-breaker
+    in ``should_continue`` can terminate runaway tool loops.
     """
     global _tool_node_instance
     if _tool_node_instance is None:
@@ -300,8 +303,14 @@ async def mcp_tool_node(state: MedAIState) -> dict:
         tools = [t.fn for t in all_tools if hasattr(t, "fn")]
         _tool_node_instance = ToolNode(tools)
 
-    # ToolNode returns {"messages": [ToolMessage(...)]}
-    return await _tool_node_instance.ainvoke(state)
+    # Execute tool calls; ToolNode returns {"messages": [ToolMessage(...)]}
+    tool_result = await _tool_node_instance.ainvoke(state)
+
+    # Increment circuit-breaker counter
+    new_count = state.get("tool_call_count", 0) + 1
+    logger.debug("mcp_tool_node executed", tool_call_count=new_count)
+
+    return {**tool_result, "tool_call_count": new_count}
 
 
 # ============================================================================

@@ -617,6 +617,7 @@ async def chat(
         "user_id": current_user.user_id,
         "session_id": session_id,
         "patient_context": patient_context,
+        "tool_call_count": 0,  # circuit-breaker counter reset each turn
         "metadata": {
             "patient_id": message.patient_id,
             "use_rag": message.use_rag,

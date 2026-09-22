@@ -110,6 +110,7 @@ class MedAIState(TypedDict):
 
     # Tool layer
     tool_results: list[dict[str, Any]]
+    tool_call_count: int  # circuit-breaker: incremented each time mcp_tool_node runs
 
     # Control flow
     requires_handoff: bool
