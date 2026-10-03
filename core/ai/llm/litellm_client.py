@@ -39,6 +39,26 @@ class AIServiceUnavailableError(RuntimeError):
 litellm.suppress_debug_info = True
 
 
+def normalize_model_name(model: str) -> str:
+    """Normalize model string, ensuring Groq open-weight models have proper provider prefix."""
+    if not model:
+        return model
+    if (model.startswith("openai/gpt-oss-") or model in ("gpt-oss-20b", "gpt-oss-120b")) and settings.groq_api_key:
+        if not model.startswith("groq/"):
+            return f"groq/{model}"
+    return model
+
+
+def get_model_api_key(model: str) -> str:
+    """Select the appropriate API key based on the model provider."""
+    norm = normalize_model_name(model)
+    if norm.startswith("groq/"):
+        return settings.groq_api_key
+    elif norm.startswith("gemini/"):
+        return settings.gemini_api_key
+    return settings.gemini_api_key
+
+
 # ============================================================================
 # Router Builder
 # ============================================================================
@@ -64,9 +84,16 @@ def _build_router() -> Router:
     fallback_models: set[str] = set()
 
     for agent in agents:
-        primary_models.add(getattr(settings, f"model_{agent}"))
-        if settings.groq_api_key:
-            fallback_models.add(getattr(settings, f"model_fallback_{agent}"))
+        primary = getattr(settings, f"model_{agent}", None)
+        if primary:
+            primary_models.add(normalize_model_name(primary))
+        fb = getattr(settings, f"model_fallback_{agent}", None)
+        if fb:
+            norm_fb = normalize_model_name(fb)
+            if norm_fb.startswith("gemini/") and settings.gemini_api_key:
+                fallback_models.add(norm_fb)
+            elif norm_fb.startswith("groq/") and settings.groq_api_key:
+                fallback_models.add(norm_fb)
 
     # ------------------------------------------------------------------
     # Build model_list (one entry per unique model)
@@ -80,7 +107,7 @@ def _build_router() -> Router:
                 "model_name": model,
                 "litellm_params": {
                     "model": model,
-                    "api_key": settings.gemini_api_key,
+                    "api_key": get_model_api_key(model),
                 },
             }
         )
@@ -91,7 +118,7 @@ def _build_router() -> Router:
                 "model_name": model,
                 "litellm_params": {
                     "model": model,
-                    "api_key": settings.groq_api_key,
+                    "api_key": get_model_api_key(model),
                 },
             }
         )
@@ -102,25 +129,26 @@ def _build_router() -> Router:
 
     fallbacks: list[dict[str, list[str]]] = []
 
-    if settings.groq_api_key:
+    if fallback_models:
         # Map each unique primary model to its corresponding fallbacks
         fallback_map: dict[str, list[str]] = {}
 
         for agent in agents:
-            primary = getattr(settings, f"model_{agent}")
-            fallback = getattr(settings, f"model_fallback_{agent}")
+            primary = normalize_model_name(getattr(settings, f"model_{agent}"))
+            fallback = normalize_model_name(getattr(settings, f"model_fallback_{agent}"))
 
             if primary not in fallback_map:
                 fallback_map[primary] = []
-            if fallback and fallback not in fallback_map[primary]:
-                # Prioritize lightweight 20b model first for speed & higher throughput
-                if "20b" in fallback:
+            if fallback and fallback in fallback_models and fallback not in fallback_map[primary]:
+                # Prioritize lightweight models first for speed & higher throughput
+                if "flash" in fallback or "8b" in fallback or "20b" in fallback:
                     fallback_map[primary].insert(0, fallback)
                 else:
                     fallback_map[primary].append(fallback)
 
         for primary, fb_list in fallback_map.items():
-            fallbacks.append({primary: fb_list})
+            if fb_list:
+                fallbacks.append({primary: fb_list})
 
     # ------------------------------------------------------------------
     # Cache configuration
@@ -480,39 +508,39 @@ def get_fallback_chat_llm(
     """
     from langchain_litellm import ChatLiteLLM  # local import avoids circular dep
 
-    # ------------------------------------------------------------------
-    # Configure module-level fallbacks so any ChatLiteLLM call on the
-    # primary model will automatically switch to the fallback on 429/5xx.
-    # ------------------------------------------------------------------
-    if settings.groq_api_key and fallback_model:
+    norm_primary = normalize_model_name(primary_model)
+    norm_fallback = normalize_model_name(fallback_model)
+    fb_key = get_model_api_key(norm_fallback)
+
+    if fb_key and norm_fallback:
         # litellm.fallbacks format: list of {primary: [fallback, ...]}
         existing: list = getattr(litellm, "fallbacks", None) or []
         # Remove stale entry for this primary (settings may have changed)
-        existing = [f for f in existing if primary_model not in f]
-        existing.append({primary_model: [fallback_model]})
+        existing = [f for f in existing if norm_primary not in f]
+        existing.append({norm_primary: [norm_fallback]})
         litellm.fallbacks = existing
 
-        # Ensure both API keys are set at module level
+        # Ensure primary API key is set at module level
         litellm.api_key = settings.gemini_api_key or litellm.api_key
 
         # Register Groq API key via litellm's provider key dict
-        if not hasattr(litellm, "_groq_api_key_set"):
+        if norm_fallback.startswith("groq/") and settings.groq_api_key and not hasattr(litellm, "_groq_api_key_set"):
             import os
             os.environ.setdefault("GROQ_API_KEY", settings.groq_api_key)
 
         logger.debug(
             "ChatLiteLLM module-level fallback registered",
-            primary=primary_model,
-            fallback=fallback_model,
+            primary=norm_primary,
+            fallback=norm_fallback,
         )
     else:
         logger.warning(
-            "No Groq API key or fallback model configured – ChatLiteLLM has no fallback",
-            primary=primary_model,
+            "No API key or fallback model configured – ChatLiteLLM has no fallback",
+            primary=norm_primary,
         )
 
     llm = ChatLiteLLM(
-        model=primary_model,
+        model=norm_primary,
         temperature=temperature,
         api_key=settings.gemini_api_key,
         max_retries=1,

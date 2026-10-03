@@ -276,6 +276,14 @@ async def response_node(state: MedAIState) -> dict:
         if isinstance(last, AIMessage) and last.content:
             return {"final_response": last.content}
 
+    if state.get("intent") == "rate_limit":
+        return {
+            "final_response": (
+                "I'm sorry, our AI service is currently hitting rate limits and experiencing high traffic. "
+                "Please try again in a moment, or call the hospital reception at 0495 2777 777."
+            )
+        }
+
     # Fallback for general intent – produce a helpful reply.
     return {
         "final_response": (

@@ -17,7 +17,13 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 
-from core.ai.llm.litellm_client import get_llm_client, get_fallback_chat_llm, AIServiceUnavailableError
+from core.ai.llm.litellm_client import (
+    get_llm_client,
+    get_fallback_chat_llm,
+    AIServiceUnavailableError,
+    normalize_model_name,
+    get_model_api_key,
+)
 from core.ai.llm.message_utils import sanitize_messages
 from core.ai.rag.pipeline import RAGPipeline
 from core.ai.graph.tools.server import mcp_server
@@ -28,33 +34,12 @@ from core.config.settings import settings
 logger = get_logger(__name__)
 
 
-MEDICAL_SYSTEM_PROMPT = """\
-You are the Medical Agent for MedAI, a hospital management AI system.
+import yaml
+from pathlib import Path
 
-Your role:
-- Help doctors with clinical decision support and patient history summaries
-- Help patients understand symptoms and provide evidence-based guidance
-- Triage symptom severity and recommend appropriate action
-
-CRITICAL SAFETY RULES:
-1. NEVER prescribe medications — only doctors can prescribe
-2. ALWAYS recommend consulting a qualified doctor for diagnosis
-3. FLAG emergency symptoms IMMEDIATELY:
-   - Chest pain or pressure
-   - Difficulty breathing
-   - Severe bleeding
-   - Loss of consciousness
-   - Signs of stroke (FAST: Face, Arms, Speech, Time)
-   - Severe allergic reaction (anaphylaxis)
-4. Maintain patient confidentiality at all times
-5. Be empathetic, clear, and professional
-
-When providing medical information:
-- Use your tools to retrieve context from the knowledge base or patient records
-- Cite sources when available using [Source N] format
-- Clearly distinguish between general medical information and patient-specific advice
-- If information is insufficient, say so clearly
-"""
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "medical.yaml"
+with open(_PROMPT_PATH, "r", encoding="utf-8") as _f:
+    MEDICAL_SYSTEM_PROMPT = yaml.safe_load(_f)["system_prompt"]
 
 
 class MedicalGraphAgent:
@@ -96,22 +81,35 @@ class MedicalGraphAgent:
                 raise
 
             logger.warning(
-                "Medical: Gemini rate-limited – switching to Groq fallback",
+                "Medical: Primary model failed – switching to fallback",
                 fallback=self._fallback_model,
                 error=str(primary_exc)[:120],
             )
 
-            if not self._fallback_model or not settings.groq_api_key:
+            if not self._fallback_model:
                 raise AIServiceUnavailableError(
                     AIServiceUnavailableError.USER_MESSAGE
                 ) from primary_exc
 
-            fallback_llm = self._make_llm(self._fallback_model, settings.groq_api_key)
+            norm_fallback = normalize_model_name(self._fallback_model)
+            api_key = get_model_api_key(norm_fallback)
+            if not api_key:
+                raise AIServiceUnavailableError(
+                    AIServiceUnavailableError.USER_MESSAGE
+                ) from primary_exc
+
+            fallback_llm = self._make_llm(norm_fallback, api_key)
             try:
                 return await fallback_llm.bind_tools(tools).ainvoke(sanitize_messages(messages))
             except Exception as fallback_exc:
+                if "tool" in str(fallback_exc).lower():
+                    try:
+                        logger.warning("Medical: Fallback tool binding failed, retrying text-only generation", error=str(fallback_exc)[:120])
+                        return await fallback_llm.ainvoke(sanitize_messages(messages))
+                    except Exception:
+                        pass
                 logger.error(
-                    "Medical: Groq fallback also failed",
+                    "Medical: Fallback also failed",
                     error=str(fallback_exc)[:120],
                 )
                 raise AIServiceUnavailableError(
@@ -200,7 +198,14 @@ class MedicalGraphAgent:
             }
 
         except AIServiceUnavailableError:
-            raise
+            logger.warning("Medical agent hit rate limit / AIServiceUnavailableError")
+            return {
+                "answer": (
+                    "I'm sorry, our AI service is currently hitting rate limits and experiencing high traffic. "
+                    "Please try again in a moment."
+                ),
+                "requires_handoff": False,
+            }
         except Exception as exc:
             logger.error(
                 "Medical agent failed",

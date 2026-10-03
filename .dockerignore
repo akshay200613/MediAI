@@ -11,7 +11,9 @@ __pycache__/
 htmlcov/
 apps/frontend/
 node_modules/
-.env.local
+.env
+.env.*
+*.bak
 data/indexes/
 uploads/
 *.log

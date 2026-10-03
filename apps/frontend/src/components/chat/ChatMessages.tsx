@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   User,
@@ -36,6 +36,11 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
   onActionSelected,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -222,7 +227,7 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
                     {isUser ? (userName || 'User') : 'MediAI Assistant'}
                   </span>
                   <span className="text-slate-400 text-[10px]">
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {!isMounted ? '' : new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
 

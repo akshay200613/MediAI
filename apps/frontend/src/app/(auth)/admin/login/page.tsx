@@ -100,11 +100,7 @@ export default function AdminLoginPage() {
           </button>
         </form>
 
-        <div className="text-center text-xs text-slate-500">
-          <Link href="/login" className="hover:text-slate-300 transition-colors">
-            ← Return to Patient Portal
-          </Link>
-        </div>
+
       </div>
     </div>
   )

@@ -12,9 +12,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.models.base_model import AuditableModel
+from core.models.user import User
 
 if TYPE_CHECKING:
-    from core.models.user import User
     from domains.medai.models.appointment import Appointment
 
 

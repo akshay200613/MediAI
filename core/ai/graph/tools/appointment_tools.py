@@ -77,6 +77,20 @@ async def list_appointments(
                     }
                 effective_patient_id = str(pat_record.id) if pat_record else str(patient_id)
 
+            import uuid
+            try:
+                uuid.UUID(str(effective_patient_id))
+            except (ValueError, AttributeError):
+                pat_svc = PatientService(session)
+                pat = await pat_svc.get_patient_by_user_id(str(effective_patient_id))
+                if pat:
+                    effective_patient_id = str(pat.id)
+                else:
+                    return {
+                        "count": 0,
+                        "appointments": [],
+                    }
+
             service = AppointmentService(session)
 
             appointments = await service.get_by_patient(effective_patient_id)
