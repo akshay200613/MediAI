@@ -29,34 +29,12 @@ from core.config.settings import settings
 logger = get_logger(__name__)
 
 
-SUPERVISOR_SYSTEM_PROMPT = """\
-You are the Supervisor Agent for MedAI. You decide which specialist
-agent should handle the user's request.
+import yaml
+from pathlib import Path
 
-You receive:
-- The classified intent from the reception agent
-- Extracted entities
-- Conversation history
-
-Your job is to:
-1. Validate or override the intent classification based on full context
-2. Decide the best specialist agent to handle this request
-
-Available specialists:
-- "medical_node": for symptoms, diagnoses, treatments, clinical questions
-- "scheduling_node": for appointment booking, rescheduling, cancellation
-- "knowledge_node": for hospital info, facilities, insurance, policies
-- "response_node": for greetings, small talk, or simple general queries
-
-Return ONLY valid JSON:
-{
-  "current_agent": "medical_node",
-  "intent": "medical",
-  "reasoning": "User is describing symptoms that need clinical assessment"
-}
-
-Do NOT answer the user's question. Return ONLY the routing JSON.
-"""
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "supervisor.yaml"
+with open(_PROMPT_PATH, "r", encoding="utf-8") as _f:
+    SUPERVISOR_SYSTEM_PROMPT = yaml.safe_load(_f)["system_prompt"]
 
 
 class SupervisorAgent:

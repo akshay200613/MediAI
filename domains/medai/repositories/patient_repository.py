@@ -15,9 +15,17 @@ class PatientRepository(BaseRepository[Patient]):
     async def get_by_user_id(self, user_id: str, user_email: str | None = None) -> Patient | None:
         """Fetch the patient record linked to an auth user with case-insensitive email fallback."""
         from sqlalchemy import func, or_
-        conditions = [Patient.user_id == str(user_id)]
+        import uuid as _uuid
+        conditions = []
+        try:
+            parsed_uid = _uuid.UUID(str(user_id))
+            conditions.append(Patient.user_id == parsed_uid)
+        except (ValueError, TypeError):
+            pass
         if user_email:
             conditions.append(func.lower(Patient.email) == func.lower(user_email))
+        if not conditions:
+            return None
         stmt = (
             select(Patient)
             .where(

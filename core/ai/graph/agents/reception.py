@@ -18,7 +18,7 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from core.ai.llm.litellm_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client, AIServiceUnavailableError
 from core.ai.llm.client import Message
 from core.config.logging import get_logger
 from core.config.settings import settings
@@ -27,37 +27,12 @@ from core.config.settings import settings
 logger = get_logger(__name__)
 
 
-RECEPTION_SYSTEM_PROMPT = """\
-You are the Reception Agent for MedAI, a hospital management system.
+import yaml
+from pathlib import Path
 
-Your ONLY job is to:
-1. Classify the user's intent into exactly ONE of these categories:
-   - "medical": symptoms, diagnoses, treatments, medications, clinical questions
-   - "scheduling": booking, rescheduling, cancelling appointments, doctor availability
-   - "knowledge": hospital info, facilities, insurance, contact details, policies
-   - "general": greetings, small talk, unclear, or out-of-scope queries
-
-2. Extract relevant entities from the message:
-   - patient_name: if a patient is mentioned
-   - doctor_name: if a doctor is mentioned
-   - specialty: if a medical specialty is mentioned
-   - date: if a date/time is mentioned (ISO 8601)
-   - symptoms: list of symptoms mentioned
-   - appointment_id: if an appointment reference is mentioned
-
-Return ONLY valid JSON in this exact format:
-{
-  "intent": "medical",
-  "entities": {
-    "symptoms": ["headache", "fever"],
-    "specialty": "neurology"
-  },
-  "confidence": 0.95
-}
-
-Do NOT answer the user's question. Do NOT generate conversational text.
-Return ONLY the JSON classification.
-"""
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "reception.yaml"
+with open(_PROMPT_PATH, "r", encoding="utf-8") as _f:
+    RECEPTION_SYSTEM_PROMPT = yaml.safe_load(_f)["system_prompt"]
 
 
 class ReceptionAgent:
@@ -122,6 +97,13 @@ class ReceptionAgent:
 
             return result
 
+        except AIServiceUnavailableError:
+            logger.warning("Reception agent hit rate limit")
+            return {
+                "intent": "rate_limit",
+                "entities": {},
+                "confidence": 0.0,
+            }
         except Exception as exc:
             logger.error(
                 "Reception agent failed",
@@ -137,18 +119,14 @@ class ReceptionAgent:
 
     @staticmethod
     def _parse_classification(content: str) -> dict[str, Any]:
-        """Parse the LLM's JSON classification response."""
-
+        """Parse the LLM's JSON classification response robustly."""
+        import re
         content = content.strip()
 
-        # Strip markdown code fences if present
-        if content.startswith("```"):
-            lines = content.splitlines()
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            content = "\n".join(lines).strip()
+        # Try to find a JSON block in the output
+        json_match = re.search(r"\{.*\}", content, re.DOTALL)
+        if json_match:
+            content = json_match.group(0)
 
         try:
             from langchain_core.utils.json import parse_partial_json
@@ -156,11 +134,9 @@ class ReceptionAgent:
             if not isinstance(data, dict):
                 data = {}
         except Exception as e:
-            logger.warning(
-                "Failed to parse reception response as JSON",
-                content=content[:200],
-                error=str(e),
-            )
+            from core.config.logging import get_logger
+            logger = get_logger(__name__)
+            logger.error("Failed to parse reception JSON", error=str(e), content=content)
             return {
                 "intent": "general",
                 "entities": {},

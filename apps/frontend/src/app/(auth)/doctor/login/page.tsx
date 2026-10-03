@@ -598,11 +598,7 @@ function DoctorLoginContent() {
               )}
             </AnimatePresence>
 
-            <div className="mt-6 pt-4 border-t border-slate-800/60 text-center">
-              <Link href="/login" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
-                ← Back to Patient Portal
-              </Link>
-            </div>
+
           </div>
         </div>
       </div>

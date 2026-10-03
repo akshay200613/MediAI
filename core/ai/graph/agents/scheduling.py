@@ -21,7 +21,12 @@ from typing import Any
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 
 from core.ai.graph.tools.server import mcp_server
-from core.ai.llm.litellm_client import get_fallback_chat_llm, AIServiceUnavailableError
+from core.ai.llm.litellm_client import (
+    get_fallback_chat_llm,
+    AIServiceUnavailableError,
+    normalize_model_name,
+    get_model_api_key,
+)
 from core.ai.llm.message_utils import sanitize_messages
 from core.config.logging import get_logger
 from core.config.settings import settings
@@ -30,83 +35,13 @@ from core.config.settings import settings
 logger = get_logger(__name__)
 
 
-SCHEDULING_SYSTEM_PROMPT = """\
-You are the Scheduling Agent for MedAI, a hospital management AI system.
+import yaml
+from pathlib import Path
 
-Your role is to help patients and staff with appointment management. Keep your messages conversational, natural, concise, and scannable. Never output long paragraphs.
-Do NOT mix profile completion with appointment booking unless a field is explicitly required. Always address the patient warmly by their actual account name.
-
-CRITICAL RULES FOR CHATBOT UX:
-1. NEVER ask for information you already know or can resolve. If the user says "tomorrow", resolve it relative to the provided current date automatically.
-2. Ask only for the NEXT piece of information required, one step at a time.
-3. NEVER output markdown tables. Instead, whenever you need to present booking information to the user, you MUST output a JSON block wrapped in ```json ... ```. Our frontend will parse this and render interactive UI cards.
-4. NEVER ask the user for a Doctor ID or Patient ID. The ID is an internal system detail. If the user provides a doctor's name, you MUST use the `get_doctor_availability` tool with the `name` parameter to find their schedule and Doctor ID automatically.
-5. MANDATORY MEDICAL PROFILE RULE: Phone Number, Gender, and Date of Birth are required before finalizing an appointment booking.
-   - If and ONLY if mandatory fields are explicitly listed as missing in the system note, output the `complete_profile` JSON block listing ONLY those remaining missing fields.
-   - If NO mandatory fields are missing (or all are present in the patient record), NEVER ask for profile details and NEVER output the `complete_profile` card. Proceed directly with checking availability, slot selection, and booking confirmation.
-   - If the patient selects "Provide details in chat" or responds with missing info, conversationally ask for ONLY the missing mandatory fields one by one. Do NOT ask for fields already present.
-   - If the patient returns after updating their profile on the Profile page, give a warm welcome back message (e.g. "Welcome back! Your profile has been updated. Let's continue booking your appointment.") and continue the booking flow from the exact previous step.
-6. BOOKING LIMITS RULE:
-   - Each patient can have at most 2 active (scheduled/confirmed/in-progress) appointments at a time. If the patient already has 2 active appointments, let them know politely that they must complete or cancel an existing appointment before booking another.
-   - Each time slot supports a maximum capacity of 2 bookings. If a slot is fully booked (2 bookings), suggest other available time slots.
-
-### Supported UI Action Blocks (Output these ONLY as raw markdown code blocks in your chat response, NEVER as a tool call):
-
-A. To show AVAILABLE SLOTS for a doctor (after checking availability):
-```json
-{
-  "action": "available_slots",
-  "doctor": "Doctor Name",
-  "date": "YYYY-MM-DD",
-  "slots": ["09:00", "09:30", "14:00"]
-}
-```
-
-B. To request BOOKING CONFIRMATION before finalizing (Wait for user to click Confirm before calling book_appointment):
-```json
-{
-  "action": "booking_confirmation",
-  "doctor": "Doctor Name",
-  "specialty": "Specialty",
-  "date": "YYYY-MM-DD",
-  "time": "HH:MM",
-  "type": "Consultation",
-  "reason": "Brief reason"
-}
-```
-
-C. To show SUCCESS AFTER BOOKING (after book_appointment succeeds):
-```json
-{
-  "action": "booking_success",
-  "appointment_id": "123-abc",
-  "doctor": "Doctor Name",
-  "date": "YYYY-MM-DD",
-  "time": "HH:MM"
-}
-```
-
-D. To prompt for MISSING MANDATORY PROFILE INFO (Required before booking):
-```json
-{
-  "action": "complete_profile",
-  "missing_fields": ["Phone Number", "Gender", "Date of Birth"],
-  "message": "Please complete your mandatory medical profile details before finalizing your booking."
-}
-```
-
-IMPORTANT TOOL CALLING RULES:
-- Callable backend tools are STRICTLY: `get_doctor_availability`, `book_appointment`, `cancel_appointment`, `list_appointments`, `get_patient_profile`, `search_patients`, `get_patient_history`.
-- NEVER attempt to call `complete_profile`, `available_slots`, `booking_confirmation`, or `booking_success` as a function or tool call! They are NOT tools.
-- When you need to show UI cards (like missing profile fields or available slots), write the JSON directly inside markdown ```json ... ``` code fences in your text response.
-
-When handling a request:
-- Determine if the user specified doctor, date, and time. Use `get_doctor_availability` to fetch open slots.
-- Check if mandatory profile info is present. If missing and user hasn't opted to provide in chat or postpone, output `complete_profile` JSON block in your chat message text.
-- Once details are clear, output the `booking_confirmation` JSON block in your chat message text and wait.
-- Once the user says "Confirm" or clicks Confirm, call `book_appointment` and output the `booking_success` JSON block in your chat message text.
-- Be polite, brief, and guide the conversation smoothly.
-"""
+# Load prompt once at module load time to save disk I/O latency on every request
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "scheduling.yaml"
+with open(_PROMPT_PATH, "r", encoding="utf-8") as _f:
+    SCHEDULING_SYSTEM_PROMPT = yaml.safe_load(_f)["system_prompt"]
 
 
 class SchedulingAgent:
@@ -148,28 +83,35 @@ class SchedulingAgent:
                 raise
 
             logger.warning(
-                "Scheduling: Gemini rate-limited – switching to Groq fallback",
+                "Scheduling: Primary model failed – switching to fallback",
                 fallback=self._fallback_model,
                 error=str(primary_exc)[:120],
             )
 
-            if not self._fallback_model or not settings.groq_api_key:
+            if not self._fallback_model:
                 raise AIServiceUnavailableError(
                     AIServiceUnavailableError.USER_MESSAGE
                 ) from primary_exc
 
-            fallback_llm = self._make_llm(self._fallback_model, settings.groq_api_key)
+            norm_fallback = normalize_model_name(self._fallback_model)
+            api_key = get_model_api_key(norm_fallback)
+            if not api_key:
+                raise AIServiceUnavailableError(
+                    AIServiceUnavailableError.USER_MESSAGE
+                ) from primary_exc
+
+            fallback_llm = self._make_llm(norm_fallback, api_key)
             try:
                 return await fallback_llm.bind_tools(tools).ainvoke(sanitize_messages(messages))
             except Exception as fallback_exc:
                 if "tool" in str(fallback_exc).lower():
                     try:
-                        logger.warning("Scheduling: Groq tool binding failed, retrying text-only generation", error=str(fallback_exc)[:120])
+                        logger.warning("Scheduling: Fallback tool binding failed, retrying text-only generation", error=str(fallback_exc)[:120])
                         return await fallback_llm.ainvoke(sanitize_messages(messages))
                     except Exception:
                         pass
                 logger.error(
-                    "Scheduling: Groq fallback also failed",
+                    "Scheduling: Fallback also failed",
                     error=str(fallback_exc)[:120],
                 )
                 raise AIServiceUnavailableError(
@@ -213,10 +155,22 @@ class SchedulingAgent:
         
         if patient_context:
             context_parts.append("\n--- PATIENT CONTEXT ---")
-            context_parts.append(f"Patient ID: {patient_context.get('patient_id')}")
+            context_parts.append(f"Patient ID: {patient_context.get('id') or patient_context.get('patient_id')}")
             context_parts.append(f"Name: {patient_context.get('first_name')} {patient_context.get('last_name')}")
+            context_parts.append(f"Phone: {patient_context.get('phone')}")
+            context_parts.append(f"Gender: {patient_context.get('gender')}")
             context_parts.append(f"Date of Birth: {patient_context.get('date_of_birth')}")
             context_parts.append(f"Blood Group: {patient_context.get('blood_group')}")
+            
+            missing = []
+            if not patient_context.get('phone'): missing.append("Phone Number")
+            if not patient_context.get('gender'): missing.append("Gender")
+            if not patient_context.get('date_of_birth'): missing.append("Date of Birth")
+            
+            if missing:
+                context_parts.append(f"Missing Mandatory Fields: {', '.join(missing)}")
+            else:
+                context_parts.append("Missing Mandatory Fields: NONE")
             context_parts.append("-----------------------")
 
         prompt = "\n".join(context_parts)
@@ -285,7 +239,14 @@ class SchedulingAgent:
             }
 
         except AIServiceUnavailableError:
-            raise
+            logger.warning("Scheduling agent hit rate limit / AIServiceUnavailableError")
+            return {
+                "answer": (
+                    "I'm sorry, our AI service is currently hitting rate limits and experiencing high traffic. "
+                    "Please try again in a moment, or call the hospital reception at 0495 2777 777."
+                ),
+                "requires_handoff": False,
+            }
         except Exception as exc:
             logger.error(
                 "Scheduling agent failed",

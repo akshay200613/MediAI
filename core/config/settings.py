@@ -1,8 +1,18 @@
 """
 Core Configuration – Pydantic BaseSettings
 All values are driven from environment variables / .env files.
+
+Priority (highest first):
+  1. Real environment variables (injected by Docker Compose `env_file`/`environment`)
+  2. ONE env file: $ENV_FILE if set, else `.env.local` if present, else `.env`
+  3. The defaults below
+
+Non-secret app behaviour (LLM models, retries, RAG tuning) is defined by the
+defaults below so every environment (local, VM) behaves identically.
+Env files should only hold secrets and environment-specific values.
 """
 
+import os
 from functools import lru_cache
 from typing import Literal
 
@@ -10,9 +20,16 @@ from pydantic import Field, PostgresDsn, RedisDsn, computed_field, model_validat
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _resolve_env_file() -> str:
+    """Pick exactly one env file so environments never get mixed."""
+    if explicit := os.getenv("ENV_FILE"):
+        return explicit
+    return ".env.local" if os.path.exists(".env.local") else ".env"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env.local", ".env"),
+        env_file=_resolve_env_file(),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -103,22 +120,24 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
 
     # ── LiteLLM Model Routing (Primary) ───────────────────────────────────────
-    model_reception: str = "gemini/gemini-3.6-flash"
-    model_medical: str = "gemini/gemini-3.6-flash"
-    model_scheduling: str = "gemini/gemini-3.6-flash"
-    model_knowledge: str = "gemini/gemini-3.6-flash"
-    model_supervisor: str = "gemini/gemini-3.6-flash"
+    # Single source of truth for models — identical on local and VM.
+    # Change models HERE (and commit), not in env files.
+    model_reception: str = "gemini/gemini-3.8-flash"
+    model_medical: str = "gemini/gemini-3.8-flash"
+    model_scheduling: str = "gemini/gemini-3.8-flash"
+    model_knowledge: str = "gemini/gemini-3.8-flash"
+    model_supervisor: str = "gemini/gemini-3.8-flash"
 
-    # ── LiteLLM Model Routing (Fallback → Groq) ──────────────────────────────
-    model_fallback_reception: str = "groq/openai/gpt-oss-20b"
+    # ── LiteLLM Model Routing (Fallback) ─────────────────────────────────────
+    model_fallback_reception: str = "groq/openai/gpt-oss-120b"
     model_fallback_medical: str = "groq/openai/gpt-oss-120b"
-    model_fallback_scheduling: str = "groq/openai/gpt-oss-20b"
-    model_fallback_knowledge: str = "groq/openai/gpt-oss-20b"
+    model_fallback_scheduling: str = "groq/openai/gpt-oss-120b"
+    model_fallback_knowledge: str = "groq/openai/gpt-oss-120b"
     model_fallback_supervisor: str = "groq/openai/gpt-oss-120b"
 
     # ── LiteLLM Router ────────────────────────────────────────────────────────
-    litellm_num_retries: int = 2
-    litellm_request_timeout: int = 30
+    litellm_num_retries: int = 1
+    litellm_request_timeout: int = 60
     litellm_cache_enabled: bool = True
 
     # ── LangSmith Observability ────────────────────────────────────────────────
@@ -130,7 +149,7 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 512
     rag_chunk_overlap: int = 64
     rag_top_k: int = 5
-    rag_score_threshold: float = 0.35
+    rag_score_threshold: float = 0.7
     rag_enable_reranker: bool = False
 
     # ── LangGraph Agent System ────────────────────────────────────────────────

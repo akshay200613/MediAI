@@ -74,9 +74,14 @@ export default function PatientDashboardPage() {
     return first || 'there'
   }, [user])
 
+  const [isMounted, setIsMounted] = useState(false)
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   // Time-based greeting
   const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const greeting = isMounted ? (hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening') : 'Welcome'
 
   const fetchAppointments = async () => {
     try {

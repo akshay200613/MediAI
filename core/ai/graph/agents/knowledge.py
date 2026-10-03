@@ -19,7 +19,7 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
-from core.ai.llm.litellm_client import get_llm_client
+from core.ai.llm.litellm_client import get_llm_client, AIServiceUnavailableError
 from core.ai.llm.client import Message
 from core.ai.rag.pipeline import RAGPipeline
 from core.config.logging import get_logger
@@ -29,29 +29,12 @@ from core.config.settings import settings
 logger = get_logger(__name__)
 
 
-KNOWLEDGE_SYSTEM_PROMPT = """\
-You are the Knowledge Agent for MedAI, a hospital management AI system.
+import yaml
+from pathlib import Path
 
-Your role is to provide accurate information about:
-- Hospital facilities, departments, and infrastructure
-- Insurance providers, TPA tie-ups, and cashless networks
-- Contact numbers, addresses, and working hours
-- Accreditations and certifications
-- Patient processes (OPD, billing, lab results, first visits)
-- Available medical specialties and services
-- Hospital group locations
-
-IMPORTANT RULES:
-1. Answer ONLY from the provided knowledge base context
-2. If information is not available, clearly say:
-   "The knowledge base does not contain this information.
-   Please contact the hospital helpdesk at 0495 2777 777."
-3. Cite sources using [Source N] format when available
-4. For insurance-related queries, always include the caveat that
-   empanelment lists change frequently and should be verified
-5. Provide specific facts, numbers, and named entities
-6. Be professional but approachable
-"""
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "knowledge.yaml"
+with open(_PROMPT_PATH, "r", encoding="utf-8") as _f:
+    KNOWLEDGE_SYSTEM_PROMPT = yaml.safe_load(_f)["system_prompt"]
 
 
 class KnowledgeAgent:
@@ -144,6 +127,16 @@ class KnowledgeAgent:
                 "requires_handoff": False,
             }
 
+        except AIServiceUnavailableError:
+            logger.warning("Knowledge agent hit rate limit / AIServiceUnavailableError")
+            return {
+                "answer": (
+                    "I'm sorry, our AI service is currently hitting rate limits and experiencing high traffic. "
+                    "Please try again in a moment, or contact the helpdesk at 0495 2777 777."
+                ),
+                "tool_results": [],
+                "requires_handoff": False,
+            }
         except Exception as exc:
             logger.error(
                 "Knowledge agent RAG query failed",
