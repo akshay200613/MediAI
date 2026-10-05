@@ -31,7 +31,14 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
+      - ./apps:/app/apps
+      - ./core:/app/core
+      - ./domains:/app/domains
+      - ./data:/app/data
       - api_uploads:/app/uploads
     networks: [ internal, web ]
 
