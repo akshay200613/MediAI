@@ -57,6 +57,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.groq_api_key:
         os.environ["GROQ_API_KEY"] = settings.groq_api_key
 
+    # Configure LangSmith Observability in os.environ for LangChain & LangGraph
+    if settings.langchain_tracing_v2 and settings.langchain_api_key:
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGSMITH_TRACING"] = "true"
+        os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
+        os.environ["LANGSMITH_API_KEY"] = settings.langchain_api_key
+        os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+        os.environ["LANGSMITH_PROJECT"] = settings.langchain_project
+        os.environ.setdefault("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
+        logger.info("LangSmith observability enabled", project=settings.langchain_project)
+    else:
+        logger.info(
+            "LangSmith observability disabled",
+            tracing=settings.langchain_tracing_v2,
+            has_api_key=bool(settings.langchain_api_key),
+        )
+
     # Force the LiteLLM Router singleton to rebuild with current settings.
     from core.ai.llm.litellm_client import reset_router
     reset_router()
