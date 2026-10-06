@@ -32,7 +32,6 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel hatchling && \
            /install/lib/python3.11/site-packages/nvidia_* \
            /install/lib/python3.11/site-packages/triton \
            /install/lib/python3.11/site-packages/cuda
-
 # ── Stage 2: Runtime Image ───────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS runtime
 

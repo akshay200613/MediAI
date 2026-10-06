@@ -39,7 +39,7 @@ fi
 
 # Step 2: Build and start
 echo -e "  ${CYAN}[2/3] Starting Docker stack (this may take a few minutes on first run)...${RESET}"
-docker compose -f docker-compose.local.yml up -d --build
+docker compose -f deployment/local/docker-compose.local.yml up -d --build
 
 # Step 3: Wait for API health check
 echo -e "  ${CYAN}[3/3] Waiting for API to become healthy...${RESET}"
@@ -62,7 +62,7 @@ if [ "$HEALTHY" = true ]; then
     echo -e "  ${GREEN}✅  MedAI is running!${RESET}"
 else
     echo -e "  ${YELLOW}⚠  API health check timed out. Services may still be starting.${RESET}"
-    echo -e "  ${YELLOW}   Run: docker compose -f docker-compose.local.yml logs api${RESET}"
+    echo -e "  ${YELLOW}   Run: docker compose -f deployment/local/docker-compose.local.yml logs api${RESET}"
 fi
 
 echo ""
@@ -73,7 +73,7 @@ echo -e "    API Docs  →  http://localhost:8000/docs"
 echo -e "    Qdrant    →  http://localhost:6333/dashboard"
 echo ""
 echo -e "  ${CYAN}Useful commands:${RESET}"
-echo -e "  ${GRAY}  Logs     →  docker compose -f docker-compose.local.yml logs -f${RESET}"
-echo -e "  ${GRAY}  Stop     →  docker compose -f docker-compose.local.yml down${RESET}"
-echo -e "  ${GRAY}  Rebuild  →  docker compose -f docker-compose.local.yml up -d --build${RESET}"
+echo -e "  ${GRAY}  Logs     →  docker compose -f deployment/local/docker-compose.local.yml logs -f${RESET}"
+echo -e "  ${GRAY}  Stop     →  docker compose -f deployment/local/docker-compose.local.yml down${RESET}"
+echo -e "  ${GRAY}  Rebuild  →  docker compose -f deployment/local/docker-compose.local.yml up -d --build${RESET}"
 echo ""

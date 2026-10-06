@@ -7,7 +7,7 @@ services:
     command: [ "uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000" ]
     mem_limit: 512m
     env_file:
-      - .env
+      - ../../.env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -31,6 +31,9 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
       - ./apps:/app/apps
       - ./core:/app/core
@@ -84,7 +87,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deployment/vm/Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
     networks: [ web ]
 
@@ -95,7 +98,7 @@ services:
     restart: unless-stopped
     mem_limit: 50m
     volumes:
-      - ./deployment/vm/alloy-config.river:/etc/alloy/config.river
+      - ./alloy-config.river:/etc/alloy/config.river
     command: run /etc/alloy/config.river
     networks: [ internal, web ]
 

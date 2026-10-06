@@ -26,12 +26,12 @@ ENV/
 env/
 
 # === Environment ===
+# Real env files hold secrets – only the *.example templates are committed.
 .env
-.env.local
-.env.staging
-.env.production
+.env.*
 *.env
-.env
+!.env.example
+!.env.local.example
 alloy-config.river
 
 # === Testing ===

@@ -245,32 +245,7 @@ function AuthForm() {
         )}
       </AnimatePresence>
 
-      {/* Other portal links */}
-      <div className="mt-6 pt-5 border-t border-slate-800/60 space-y-2">
-        <p className="text-[11px] text-slate-500 text-center mb-3">Other portals</p>
-        <Link href="/login/doctor"
-          className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-slate-800 hover:border-indigo-500/40 hover:bg-indigo-500/5 text-slate-400 hover:text-indigo-300 transition-all group">
-          <div className="flex items-center gap-2.5">
-            <Stethoscope className="w-4 h-4 text-indigo-400" />
-            <div>
-              <p className="text-xs font-semibold">Doctor Portal</p>
-              <p className="text-[10px] text-slate-600">Login or register as a physician</p>
-            </div>
-          </div>
-          <span className="text-[10px] text-slate-600 group-hover:text-indigo-400">→</span>
-        </Link>
-        <Link href="/login/admin"
-          className="flex items-center justify-between w-full px-4 py-3 rounded-xl border border-slate-800 hover:border-amber-500/30 hover:bg-amber-500/5 text-slate-400 hover:text-amber-300 transition-all group">
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="w-4 h-4 text-amber-400" />
-            <div>
-              <p className="text-xs font-semibold">Admin Console</p>
-              <p className="text-[10px] text-slate-600">Restricted — administrators only</p>
-            </div>
-          </div>
-          <span className="text-[10px] text-slate-600 group-hover:text-amber-400">→</span>
-        </Link>
-      </div>
+
 
       <p className="text-center text-[11px] text-slate-500 mt-5 flex items-center justify-center gap-1">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 inline-block" />

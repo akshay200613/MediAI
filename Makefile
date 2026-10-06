@@ -48,29 +48,29 @@ migrate-down: ## Rollback last migration
 
 # ── Docker (Infrastructure) ──────────────────────────────────────────────────
 docker-up: ## Start PostgreSQL, Redis, and Qdrant
-	docker compose up -d
+	docker compose -f deployment/vm/docker-compose.yml up -d
 
 docker-down: ## Stop all Docker services
-	docker compose down
+	docker compose -f deployment/vm/docker-compose.yml down
 
 docker-logs: ## Tail Docker logs
-	docker compose logs -f
+	docker compose -f deployment/vm/docker-compose.yml logs -f
 
 # ── Local Development (docker-compose.local.yml) ─────────────────────────────
 local-setup: ## First-time local setup: copy .env.local.example → .env.local
 	@if not exist .env.local (copy .env.local.example .env.local && echo .env.local created. Fill in your API keys.) else (echo .env.local already exists, skipping.)
 
 local-up: ## Start full local stack (builds from source)
-	docker compose -f docker-compose.local.yml up -d
+	docker compose -f deployment/local/docker-compose.local.yml up -d
 
 local-build: ## Rebuild local images after code changes
-	docker compose -f docker-compose.local.yml up -d --build
+	docker compose -f deployment/local/docker-compose.local.yml up -d --build
 
 local-down: ## Stop local stack
-	docker compose -f docker-compose.local.yml down
+	docker compose -f deployment/local/docker-compose.local.yml down
 
 local-logs: ## Tail local stack logs
-	docker compose -f docker-compose.local.yml logs -f
+	docker compose -f deployment/local/docker-compose.local.yml logs -f
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 test: ## Run all tests with coverage

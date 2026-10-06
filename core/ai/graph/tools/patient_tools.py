@@ -68,9 +68,15 @@ async def get_patient_profile(patient_id: str) -> dict[str, Any]:
                         "error": "Unauthorized: You can only view your own patient profile.",
                     }
 
-            patient = await service.get_patient(
-                uuid.UUID(patient_id)
-            )
+            patient = None
+            try:
+                parsed_uuid = uuid.UUID(str(patient_id))
+                patient = await service.get_patient(parsed_uuid)
+            except (ValueError, TypeError):
+                pass
+
+            if patient is None:
+                patient = await service.get_patient_by_user_id(str(patient_id))
 
             if patient is None:
                 return {

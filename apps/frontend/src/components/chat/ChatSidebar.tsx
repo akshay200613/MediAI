@@ -32,6 +32,11 @@ export const ChatSidebar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [isMounted, setIsMounted] = useState(false)
+
+  React.useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Filtered and Date-Grouped Sessions
   const groupedSessions = useMemo(() => {
@@ -147,7 +152,7 @@ export const ChatSidebar: React.FC = () => {
 
             {/* Conversation History List */}
             <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-              {Object.entries(groupedSessions).map(([groupTitle, groupSessions]) => {
+              {!isMounted ? null : Object.entries(groupedSessions).map(([groupTitle, groupSessions]) => {
                 if (groupSessions.length === 0) return null
 
                 return (

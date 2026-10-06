@@ -2,7 +2,7 @@ services:
   # ── FastAPI Backend API (built from source) ──────────────────────────────────
   api:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile
     container_name: medai_api
     restart: unless-stopped
@@ -10,15 +10,13 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - ../../.env.local          # local secrets only (never the VM's .env)
     environment:
-      # Override with Docker service hostnames (not localhost)
+      # Override with Docker service hostnames (not localhost).
+      # DATABASE_URL / REDIS_URL are built by settings.py from these parts.
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB:-medai}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-medai}
+      DATABASE_URL: ""
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379/0
@@ -43,10 +41,10 @@ services:
       retries: 5
     volumes:
       # Hot-reload: source code changes reflect immediately
-      - ./apps:/app/apps
-      - ./core:/app/core
-      - ./domains:/app/domains
-      - api_uploads:/app/uploads
+      - ../../apps:/app/apps
+      - ../../core:/app/core
+      - ../../domains:/app/domains
+      - mediai_api_uploads:/app/uploads   # reuse existing uploaded files
     networks: [internal, monitoring]
 
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
@@ -54,16 +52,14 @@ services:
     image: postgres:16-alpine
     container_name: medai_postgres
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-medai}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    env_file:
+      - ../../.env.local          # POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
     ports:
       - "5433:5432"   # 5433 on host to avoid conflict with local Windows PostgreSQL
     volumes:
       - mediai_postgres_data:/var/lib/postgresql/data   # reuse existing data volume
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -95,7 +91,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - mediai_qdrant_storage:/qdrant/storage   # reuse existing vector data
+      - mediai_qdrant_data:/qdrant/storage   # reuse existing vector data (medai_knowledge)
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null && exit 0 || exit 1"]
       interval: 10s
@@ -112,7 +108,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - mediai_prometheus_data:/prometheus   # reuse existing metrics history
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -143,7 +139,7 @@ services:
       GF_SERVER_ROOT_URL: "http://localhost:3001"
     volumes:
       - mediai_grafana_data:/var/lib/grafana   # reuse existing dashboards & data
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       prometheus:
         condition: service_healthy
@@ -155,19 +151,39 @@ services:
       retries: 3
     networks: [monitoring]
 
+  # ── Next.js Frontend ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../../apps/frontend
+      dockerfile: Dockerfile.local
+    container_name: medai_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000   # used by the browser
+      API_INTERNAL_URL: http://api:8000                 # used by Next.js server rewrites
+    volumes:
+      - ../../apps/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    networks: [internal]
+
 volumes:
   # Reference existing named volumes to preserve all data
   mediai_postgres_data:
     external: true
   mediai_redis_data:
     external: true
-  mediai_qdrant_storage:
+  mediai_qdrant_data:
     external: true
   mediai_prometheus_data:
     external: true
   mediai_grafana_data:
     external: true
-  api_uploads:
+  mediai_api_uploads:
+    external: true
 
 networks:
   internal:
