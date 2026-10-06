@@ -9,7 +9,7 @@ Write-Host "`n📦 Activating virtual environment..." -ForegroundColor Yellow
 
 # 2. Start Docker services (Postgres, Redis, Qdrant)
 Write-Host "`n🐳 Starting Docker services..." -ForegroundColor Yellow
-docker compose up -d
+docker compose -f deployment\vm\docker-compose.yml up -d
 
 # 3. Wait for Postgres to be ready
 Write-Host "`n⏳ Waiting for PostgreSQL to be ready..." -ForegroundColor Yellow

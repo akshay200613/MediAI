@@ -73,19 +73,16 @@ class SchedulingAgent:
         return any(signal in exc_str for signal in self._RATE_LIMIT_SIGNALS)
 
     async def _invoke_with_fallback(self, llm, tools, messages):
-        """Invoke the LLM. On Gemini rate-limit, transparently retry with Groq."""
+        """Invoke the LLM. On any primary failure (503 high demand, 429 rate limit, timeouts), retry with fallback model."""
         try:
             return await llm.bind_tools(tools).ainvoke(messages)
         except AIServiceUnavailableError:
             raise
         except Exception as primary_exc:
-            if not self._is_rate_limit(primary_exc):
-                raise
-
             logger.warning(
                 "Scheduling: Primary model failed – switching to fallback",
                 fallback=self._fallback_model,
-                error=str(primary_exc)[:120],
+                error=str(primary_exc)[:160],
             )
 
             if not self._fallback_model:

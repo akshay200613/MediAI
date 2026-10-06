@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # MedAI – Local Development Startup Script (Windows PowerShell)
 # Usage: .\start-local.ps1
 # =============================================================================
@@ -29,9 +29,10 @@ if (-not (Test-Path ".env.local")) {
     Write-Host "  [1/3] .env.local already exists — skipping" -ForegroundColor DarkGray
 }
 
+
 # Step 2: Build and start containers
 Write-Host "  [2/3] Starting Docker stack (this may take a few minutes on first run)..." -ForegroundColor Cyan
-docker compose -f docker-compose.local.yml up -d --build
+docker compose -f deployment\local\docker-compose.local.yml up -d --build
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  [ERROR] Docker Compose failed. Check the output above." -ForegroundColor Red
@@ -61,7 +62,7 @@ if ($healthy) {
     Write-Host "  ✅  MedAI is running!" -ForegroundColor Green
 } else {
     Write-Host "  ⚠  API health check timed out. Services may still be starting." -ForegroundColor Yellow
-    Write-Host "     Run: docker compose -f docker-compose.local.yml logs api" -ForegroundColor Yellow
+    Write-Host "     Run: docker compose -f deployment\local\docker-compose.local.yml logs api" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -72,7 +73,7 @@ Write-Host "    API Docs  →  http://localhost:8000/docs" -ForegroundColor Whit
 Write-Host "    Qdrant    →  http://localhost:6333/dashboard" -ForegroundColor White
 Write-Host ""
 Write-Host "  Useful commands:" -ForegroundColor Cyan
-Write-Host "    Logs     →  docker compose -f docker-compose.local.yml logs -f" -ForegroundColor DarkGray
-Write-Host "    Stop     →  docker compose -f docker-compose.local.yml down" -ForegroundColor DarkGray
-Write-Host "    Rebuild  →  docker compose -f docker-compose.local.yml up -d --build" -ForegroundColor DarkGray
+Write-Host "    Logs     →  docker compose -f deployment\local\docker-compose.local.yml logs -f" -ForegroundColor DarkGray
+Write-Host "    Stop     →  docker compose -f deployment\local\docker-compose.local.yml down" -ForegroundColor DarkGray
+Write-Host "    Rebuild  →  docker compose -f deployment\local\docker-compose.local.yml up -d --build" -ForegroundColor DarkGray
 Write-Host ""
